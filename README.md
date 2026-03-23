@@ -79,6 +79,12 @@ Generate learned video and metrics with a checkpoint:
 .\scripts\tools\run_python.ps1 .\scripts\generate_comparison_artifacts.py --mode learned --task Inventory-Leveling-Play-v0 --video_length 600 --num_envs 1 --checkpoint R:\Frbot_Lift\logs\rsl_rl\inventory_leveling\<run>\model_<n>.pt --headless
 ```
 
+Auto-extend long training for a wall-clock target:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tools\auto_extend_training.ps1 -Task Inventory-Leveling-v0 -NumEnvs 1024 -ChunkIterations 1500 -MinDurationHours 5.5 -RunNamePrefix wallclock_5h -InitialRunDir R:\Frbot_Lift\logs\rsl_rl\inventory_leveling\<run> -ActiveProcessId <pid> -PollSeconds 300 -GenerateArtifacts
+```
+
 ## Outputs
 
 Generated comparison artifacts are written to:
