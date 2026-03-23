@@ -1,0 +1,3 @@
+mode,steps,roll_rms_deg,pitch_rms_deg,peak_tilt_deg,mean_forward_velocity_mps,mean_abs_forward_velocity_mps
+baseline,60,2.006029,5.026801,10.621449,-0.118431,0.166486
+learned,600,2.226896,2.495088,14.637541,-0.027761,0.036900
