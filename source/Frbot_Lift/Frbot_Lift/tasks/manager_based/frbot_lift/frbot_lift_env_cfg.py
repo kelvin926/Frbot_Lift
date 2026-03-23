@@ -207,30 +207,41 @@ class RewardsCfg:
     alive = RewTerm(func=mdp.is_alive, weight=0.2)
     terminating = RewTerm(
         func=mdp.is_terminated_term,
-        weight=-5.0,
+        weight=-10.0,
         params={"term_keys": ["bad_orientation", "terrain_out_of_bounds", "stalled_progress"]},
     )
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-15.0)
-    angular_velocity = RewTerm(func=mdp.ang_vel_xy_l2, weight=-1.0)
+    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-24.0)
+    tilt_margin = RewTerm(
+        func=mdp.tilt_margin_l2,
+        weight=-60.0,
+        params={"threshold": math.radians(6.0)},
+    )
+    angular_velocity = RewTerm(func=mdp.ang_vel_xy_l2, weight=-2.0)
     vertical_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    lateral_velocity = RewTerm(func=mdp.lateral_velocity_l2, weight=-0.75)
+    lateral_velocity = RewTerm(func=mdp.lateral_velocity_l2, weight=-1.0)
     forward_velocity = RewTerm(
         func=mdp.track_forward_speed_abs_exp,
-        weight=4.0,
-        params={"target": FORWARD_VELOCITY_TARGET_MPS, "std": 0.25},
+        weight=8.0,
+        params={"target": FORWARD_VELOCITY_TARGET_MPS, "std": 0.08},
+    )
+    forward_speed = RewTerm(func=mdp.forward_speed_abs, weight=2.5)
+    forward_speed_deficit = RewTerm(
+        func=mdp.forward_speed_deficit_l1,
+        weight=-4.0,
+        params={"target": FORWARD_VELOCITY_TARGET_MPS * 0.8},
     )
     suspension_centering = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.2,
+        weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
     )
     suspension_limits = RewTerm(
         func=mdp.joint_pos_limits,
-        weight=-4.0,
+        weight=-5.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
     )
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
-    action_magnitude = RewTerm(func=mdp.action_l2, weight=-0.01)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.03)
+    action_magnitude = RewTerm(func=mdp.action_l2, weight=-0.005)
 
 
 @configclass

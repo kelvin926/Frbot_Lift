@@ -48,7 +48,8 @@ LIFT_JOINTS = [
 
 SUSPENSION_MIDPOINT_RAD = math.radians(-9.0)
 WHEEL_TARGET_RAD_S = -math.radians(314.0)
-FORWARD_VELOCITY_TARGET_MPS = 0.25
+# Use the observed baseline straight-drive speed as the nominal tracking target.
+FORWARD_VELOCITY_TARGET_MPS = 0.16
 
 STEER_POSITION_TARGETS_RAD = {
     "FL_steer": math.pi,
