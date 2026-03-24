@@ -9,12 +9,38 @@ import torch
 
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation
+from isaaclab.envs.mdp.actions.actions_cfg import EMAJointPositionToLimitsActionCfg as BaseEMAJointPositionToLimitsActionCfg
+from isaaclab.envs.mdp.actions.joint_actions_to_limits import EMAJointPositionToLimitsAction as BaseEMAJointPositionToLimitsAction
 from isaaclab.managers.action_manager import ActionTerm, ActionTermCfg
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
 from isaaclab.utils import configclass
 
 from .robot_frame import body_to_robot_frame, robot_to_body_frame
+
+
+class RampEMAJointPositionToLimitsAction(BaseEMAJointPositionToLimitsAction):
+    """EMA joint action with a per-episode ramp to suppress violent random actions right after spawn."""
+
+    def __init__(self, cfg: ActionTermCfg, env):
+        super().__init__(cfg, env)
+        self._ramp_duration_s = float(getattr(cfg, "ramp_duration_s", 0.0))
+
+    def process_actions(self, actions: torch.Tensor):
+        if self._ramp_duration_s > 0.0:
+            step_dt = float(getattr(self._env, "step_dt", self._env.cfg.sim.dt * self._env.cfg.decimation))
+            elapsed_s = self._env.episode_length_buf.to(dtype=torch.float32, device=self.device).unsqueeze(-1) * step_dt
+            ramp = torch.clamp(elapsed_s / self._ramp_duration_s, min=0.0, max=1.0)
+            actions = actions * ramp
+        super().process_actions(actions)
+
+
+@configclass
+class RampEMAJointPositionToLimitsActionCfg(BaseEMAJointPositionToLimitsActionCfg):
+    """Configuration for ramped EMA suspension actions."""
+
+    class_type: type[ActionTerm] = RampEMAJointPositionToLimitsAction
+    ramp_duration_s: float = 0.0
 
 
 class FixedJointTargetsAction(ActionTerm):

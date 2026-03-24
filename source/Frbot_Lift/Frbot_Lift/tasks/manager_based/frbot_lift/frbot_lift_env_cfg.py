@@ -107,12 +107,13 @@ class FrbotLiftSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specification."""
 
-    suspension = mdp.EMAJointPositionToLimitsActionCfg(
+    suspension = mdp.RampEMAJointPositionToLimitsActionCfg(
         asset_name="robot",
         joint_names=SUSPENSION_JOINTS,
         preserve_order=True,
-        scale=0.2,
-        alpha=0.15,
+        scale=0.05,
+        alpha=0.05,
+        ramp_duration_s=3.0,
     )
     drivetrain = mdp.FixedJointTargetsActionCfg(
         asset_name="robot",
