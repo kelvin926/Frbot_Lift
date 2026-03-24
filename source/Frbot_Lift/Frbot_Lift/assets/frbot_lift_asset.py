@@ -187,13 +187,6 @@ FRBOT_LIFT_STABLE_CFG = FRBOT_LIFT_CFG.replace(
         joint_vel={".*": 0.0},
     ),
     actuators={
-        "steer": ImplicitActuatorCfg(
-            joint_names_expr=STEER_JOINTS,
-            effort_limit_sim=1800.0,
-            velocity_limit_sim=8.0,
-            stiffness=1800.0,
-            damping=180.0,
-        ),
         "suspension": ImplicitActuatorCfg(
             joint_names_expr=SUSPENSION_JOINTS,
             effort_limit_sim=1200.0,

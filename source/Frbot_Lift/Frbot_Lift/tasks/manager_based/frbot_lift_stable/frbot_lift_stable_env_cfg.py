@@ -27,7 +27,6 @@ from Frbot_Lift.assets.frbot_lift_asset import (
     FRBOT_LIFT_STABLE_CFG,
     REFERENCE_BODY_NAME_EXPR,
     STABLE_BASE_INIT_HEIGHT_M,
-    STEER_POSITION_TARGETS_RAD,
     SUSPENSION_JOINTS,
     SUSPENSION_MIDPOINT_RAD,
     WHEEL_VELOCITY_TARGETS_RAD_S,
@@ -162,7 +161,7 @@ class StableFlatActionsCfg:
     )
     drivetrain = mdp.BootstrapDrivetrainActionCfg(
         asset_name="robot",
-        steer_position_targets=STEER_POSITION_TARGETS_RAD,
+        steer_position_targets=None,
         lift_start_targets=None,
         lift_max_targets=None,
         wheel_velocity_targets=WHEEL_VELOCITY_TARGETS_RAD_S,

@@ -17,6 +17,10 @@ LOCKED_JOINT_LIMITS = {
     "Link_4to5_2_joint": (-900.01, -899.99),
     "Link_5to6_2_joint": (-900.01, -899.99),
     "Link_6to7_2_joint": (-900.01, -899.99),
+    "steering/FL_steer": (179.99, 180.01),
+    "steering/FR_steer": (179.99, 180.01),
+    "steering/RL_steer": (-0.01, 0.01),
+    "steering/RR_steer": (-0.01, 0.01),
 }
 
 DISABLED_COLLISION_ROOTS = (
@@ -105,17 +109,11 @@ def generate_runtime_usda(source_usd: Path, output_usda: Path) -> None:
         "    {",
     ]
 
-    for joint_name, (lower, upper) in LOCKED_JOINT_LIMITS.items():
-        lines.extend(
-            [
-                f'        over "{joint_name}"',
-                "        {",
-                f"            float physics:lowerLimit = {lower}",
-                f"            float physics:upperLimit = {upper}",
-                "        }",
-                "",
-            ]
-        )
+    joint_override_tree: dict = {}
+    for joint_path, (lower, upper) in LOCKED_JOINT_LIMITS.items():
+        _insert_path(joint_override_tree, joint_path, f"float physics:lowerLimit = {lower}")
+        _insert_path(joint_override_tree, joint_path, f"float physics:upperLimit = {upper}")
+    lines.extend(_emit_tree(joint_override_tree, indent=2))
     if lines[-1] == "":
         lines.pop()
     lines.extend(["    }", ""])
