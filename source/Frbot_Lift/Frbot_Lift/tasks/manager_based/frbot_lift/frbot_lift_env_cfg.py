@@ -276,6 +276,8 @@ class FrbotLiftEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.lookat = (0.0, 0.0, 0.6)
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
+        # The long lift and dense wheel contacts can overflow the default GPU collision stack in GUI training.
+        self.sim.physx.gpu_collision_stack_size = 2**28
 
 
 @configclass
