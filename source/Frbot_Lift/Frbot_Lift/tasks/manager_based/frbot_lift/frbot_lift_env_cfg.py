@@ -23,6 +23,7 @@ from isaaclab.utils import configclass
 
 from Frbot_Lift.assets.frbot_lift_asset import (
     BASE_ATTACH_PRIM_PATH,
+    BASE_INIT_HEIGHT_M,
     FORWARD_VELOCITY_TARGET_MPS,
     FRBOT_LIFT_CFG,
     LIFT_POSITION_TARGETS_M,

@@ -50,6 +50,7 @@ SUSPENSION_MIDPOINT_RAD = math.radians(-9.0)
 WHEEL_TARGET_RAD_S = -math.radians(314.0)
 # Use the observed baseline straight-drive speed as the nominal tracking target.
 FORWARD_VELOCITY_TARGET_MPS = 0.16
+BASE_INIT_HEIGHT_M = 0.16
 
 STEER_POSITION_TARGETS_RAD = {
     "FL_steer": math.pi,
@@ -93,7 +94,7 @@ FRBOT_LIFT_CFG = ArticulationCfg(
     ),
     articulation_root_prim_path=ARTICULATION_ROOT_PRIM_PATH,
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.0),
+        pos=(0.0, 0.0, BASE_INIT_HEIGHT_M),
         joint_pos=DEFAULT_JOINT_POSITIONS,
         joint_vel={".*": 0.0},
     ),
