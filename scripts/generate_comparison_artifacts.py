@@ -15,7 +15,7 @@ from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Generate comparison artifacts for inventory leveling.")
 parser.add_argument("--mode", choices=("baseline", "learned"), required=True, help="Artifact generation mode.")
-parser.add_argument("--task", type=str, default="Inventory-Leveling-Play-v0", help="Task name.")
+parser.add_argument("--task", type=str, default="Inventory-Leveling-StablePlay-v0", help="Task name.")
 parser.add_argument("--video_length", type=int, default=600, help="Number of environment steps to record.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
 parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path for learned mode.")
@@ -37,7 +37,9 @@ from isaaclab_tasks.utils import get_checkpoint_path, load_cfg_from_registry, pa
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 from rsl_rl.runners import OnPolicyRunner
 
+from Frbot_Lift.assets.frbot_lift_asset import LIFT_JOINTS
 from Frbot_Lift.tasks.manager_based.frbot_lift.mdp.robot_frame import body_to_robot_frame, robot_roll_pitch_from_gravity
+from Frbot_Lift.tasks.manager_based.frbot_lift_stable.mdp.bootstrap import phase_index, phase_name_from_index
 
 
 def resolve_project_root() -> Path:
@@ -50,24 +52,38 @@ def resolve_project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def resolve_output_paths(project_root: Path, mode: str) -> tuple[Path, Path]:
+TRAIN_TASK_OVERRIDES = {
+    "Inventory-Leveling-Play-v0": "Inventory-Leveling-v0",
+    "Inventory-Leveling-StablePlay-v0": "Inventory-Leveling-StableAdaptive-v0",
+}
+
+
+def resolve_train_task(task_name: str) -> str:
+    return TRAIN_TASK_OVERRIDES.get(task_name, task_name.replace("-Play", "") if "-Play" in task_name else task_name)
+
+
+def resolve_output_paths(project_root: Path, mode: str) -> tuple[Path, Path, Path]:
     video_dir = project_root / "artifacts" / "videos"
     metrics_dir = project_root / "artifacts" / "metrics"
     video_dir.mkdir(parents=True, exist_ok=True)
     metrics_dir.mkdir(parents=True, exist_ok=True)
-    return video_dir / f"{mode}_straight.mp4", metrics_dir / "tilt_metrics.csv"
+    return (
+        video_dir / f"{mode}_straight.mp4",
+        metrics_dir / "tilt_metrics.csv",
+        metrics_dir / f"{mode}_per_env_metrics.csv",
+    )
 
 
 def resolve_checkpoint(project_root: Path, task_name: str, checkpoint: str | None, run_pattern: str) -> str:
     if checkpoint:
         return checkpoint
-    agent_cfg = load_cfg_from_registry(task_name.replace("-Play", ""), "rsl_rl_cfg_entry_point")
+    agent_cfg = load_cfg_from_registry(resolve_train_task(task_name), "rsl_rl_cfg_entry_point")
     log_root = project_root / "logs" / "rsl_rl" / agent_cfg.experiment_name
     return get_checkpoint_path(str(log_root), run_dir=run_pattern, checkpoint="model_.*.pt")
 
 
-def extract_metrics(base_env) -> tuple[float, float, float]:
-    projected_gravity_robot = body_to_robot_frame(base_env.scene["robot"].data.projected_gravity_b[0:1])
+def extract_metrics(base_env, env_idx: int = 0) -> tuple[float, float, float]:
+    projected_gravity_robot = body_to_robot_frame(base_env.scene["robot"].data.projected_gravity_b[env_idx : env_idx + 1])
     roll, pitch = robot_roll_pitch_from_gravity(projected_gravity_robot)
     roll_deg = torch.rad2deg(roll).item()
     pitch_deg = torch.rad2deg(pitch).item()
@@ -133,11 +149,71 @@ def upsert_metrics(
         writer.writerows(rows)
 
 
+def write_per_env_metrics(csv_path: Path, rows: list[dict[str, str | int | float]]):
+    fieldnames = [
+        "mode",
+        "step",
+        "env_idx",
+        "phase",
+        "root_height_m",
+        "roll_deg",
+        "pitch_deg",
+        "peak_tilt_deg",
+        "forward_velocity_mps",
+        "termination_terms",
+        *[f"{joint_name}_pos" for joint_name in LIFT_JOINTS],
+    ]
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def collect_per_env_rows(base_env, mode: str, step_idx: int, lift_joint_ids: list[int], stable_task: bool) -> list[dict]:
+    robot = base_env.scene["robot"]
+    projected_gravity_robot = body_to_robot_frame(robot.data.projected_gravity_b)
+    roll, pitch = robot_roll_pitch_from_gravity(projected_gravity_robot)
+    roll_deg = torch.rad2deg(roll)
+    pitch_deg = torch.rad2deg(pitch)
+    peak_tilt_deg = torch.maximum(torch.abs(roll_deg), torch.abs(pitch_deg))
+    root_height = robot.data.root_pos_w[:, 2] - base_env.scene.env_origins[:, 2]
+    forward_velocity = body_to_robot_frame(robot.data.root_lin_vel_b)[:, 0]
+    lift_positions = robot.data.joint_pos[:, lift_joint_ids]
+    phase_names = None
+    if stable_task:
+        phase_names = [phase_name_from_index(value.item()) for value in phase_index(base_env)]
+
+    rows = []
+    for env_idx in range(base_env.num_envs):
+        termination_terms = []
+        for term_name in base_env.termination_manager.active_terms:
+            if base_env.termination_manager.get_term(term_name)[env_idx].item():
+                termination_terms.append(term_name)
+
+        row = {
+            "mode": mode,
+            "step": step_idx,
+            "env_idx": env_idx,
+            "phase": phase_names[env_idx] if phase_names is not None else "n/a",
+            "root_height_m": f"{root_height[env_idx].item():.6f}",
+            "roll_deg": f"{roll_deg[env_idx].item():.6f}",
+            "pitch_deg": f"{pitch_deg[env_idx].item():.6f}",
+            "peak_tilt_deg": f"{peak_tilt_deg[env_idx].item():.6f}",
+            "forward_velocity_mps": f"{forward_velocity[env_idx].item():.6f}",
+            "termination_terms": "|".join(termination_terms),
+        }
+        for joint_offset, joint_name in enumerate(LIFT_JOINTS):
+            row[f"{joint_name}_pos"] = f"{lift_positions[env_idx, joint_offset].item():.6f}"
+        rows.append(row)
+    return rows
+
+
 def main():
     project_root = resolve_project_root()
-    target_video_path, metrics_csv_path = resolve_output_paths(project_root, args_cli.mode)
+    target_video_path, metrics_csv_path, per_env_csv_path = resolve_output_paths(project_root, args_cli.mode)
     temp_video_dir = target_video_path.parent / f"_{args_cli.mode}_tmp"
     shutil.rmtree(temp_video_dir, ignore_errors=True)
+    stable_task = "Inventory-Leveling-Stable" in args_cli.task
 
     env_cfg = parse_env_cfg(
         args_cli.task,
@@ -159,11 +235,13 @@ def main():
     )
 
     base_env = env.unwrapped
+    lift_joint_ids, _ = base_env.scene["robot"].find_joints(LIFT_JOINTS, preserve_order=True)
     roll_values = []
     pitch_values = []
     peak_values = []
     forward_velocity_values = []
     abs_forward_velocity_values = []
+    per_env_rows = []
 
     if args_cli.mode == "baseline":
         env.reset()
@@ -180,10 +258,13 @@ def main():
             forward_velocity = body_to_robot_frame(base_env.scene["robot"].data.root_lin_vel_b[0:1])[0, 0].item()
             forward_velocity_values.append(forward_velocity)
             abs_forward_velocity_values.append(abs(forward_velocity))
+            per_env_rows.extend(
+                collect_per_env_rows(base_env, args_cli.mode, len(roll_values) - 1, lift_joint_ids, stable_task)
+            )
         env.close()
     else:
         checkpoint_path = resolve_checkpoint(project_root, args_cli.task, args_cli.checkpoint, args_cli.run)
-        agent_cfg = load_cfg_from_registry(args_cli.task.replace("-Play", ""), "rsl_rl_cfg_entry_point")
+        agent_cfg = load_cfg_from_registry(resolve_train_task(args_cli.task), "rsl_rl_cfg_entry_point")
         vec_env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
         runner = OnPolicyRunner(vec_env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
         runner.load(checkpoint_path)
@@ -208,6 +289,9 @@ def main():
             forward_velocity = body_to_robot_frame(base_env.scene["robot"].data.root_lin_vel_b[0:1])[0, 0].item()
             forward_velocity_values.append(forward_velocity)
             abs_forward_velocity_values.append(abs(forward_velocity))
+            per_env_rows.extend(
+                collect_per_env_rows(base_env, args_cli.mode, len(roll_values) - 1, lift_joint_ids, stable_task)
+            )
         vec_env.close()
 
     finalize_video(temp_video_dir, target_video_path)
@@ -220,6 +304,7 @@ def main():
         forward_velocity_values,
         abs_forward_velocity_values,
     )
+    write_per_env_metrics(per_env_csv_path, per_env_rows)
 
 
 if __name__ == "__main__":

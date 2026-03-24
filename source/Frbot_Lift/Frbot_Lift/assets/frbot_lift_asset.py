@@ -55,9 +55,14 @@ WHEEL_TARGET_RAD_S = math.radians(31.4)
 FORWARD_VELOCITY_TARGET_MPS = 0.016
 DRIVETRAIN_RAMP_DURATION_S = 1.5
 BASE_INIT_HEIGHT_M = 0.16
+STABLE_BASE_INIT_HEIGHT_M = 0.56
 # The imported USD uses a Y-up robot frame. Rotate the articulation root once at spawn so the lift stands upright in
 # Isaac Sim's Z-up world, then convert observations/rewards back into a robot-aligned frame inside the task logic.
 BASE_INIT_ROT_WXYZ = (math.sqrt(0.5), math.sqrt(0.5), 0.0, 0.0)
+BOOTSTRAP_SETTLE_DURATION_S = 0.5
+BOOTSTRAP_LIFT_DURATION_S = 4.0
+BOOTSTRAP_HOLD_DURATION_S = 0.5
+BOOTSTRAP_DRIVE_RAMP_DURATION_S = 2.0
 
 STEER_POSITION_TARGETS_RAD = {
     "FL_steer": math.pi,
@@ -74,9 +79,15 @@ LIFT_POSITION_TARGETS_M = {
     "Link_5to6_2_joint": -0.9,
     "Link_6to7_2_joint": -0.9,
 }
+LIFT_RETRACTED_POSITION_TARGETS_M = {joint_name: 0.0 for joint_name in LIFT_JOINTS}
 DEFAULT_JOINT_POSITIONS = {
     **STEER_POSITION_TARGETS_RAD,
     **LIFT_POSITION_TARGETS_M,
+    **{joint_name: SUSPENSION_MIDPOINT_RAD for joint_name in SUSPENSION_JOINTS},
+}
+STABLE_DEFAULT_JOINT_POSITIONS = {
+    **STEER_POSITION_TARGETS_RAD,
+    **LIFT_RETRACTED_POSITION_TARGETS_M,
     **{joint_name: SUSPENSION_MIDPOINT_RAD for joint_name in SUSPENSION_JOINTS},
 }
 
@@ -136,5 +147,62 @@ FRBOT_LIFT_CFG = ArticulationCfg(
             stiffness=0.0,
             damping=4000.0,
         )
+    },
+)
+
+
+FRBOT_LIFT_STABLE_CFG = FRBOT_LIFT_CFG.replace(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=str(ASSET_PATH),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=False,
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=2,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, STABLE_BASE_INIT_HEIGHT_M),
+        rot=BASE_INIT_ROT_WXYZ,
+        joint_pos=STABLE_DEFAULT_JOINT_POSITIONS,
+        joint_vel={".*": 0.0},
+    ),
+    actuators={
+        "steer": ImplicitActuatorCfg(
+            joint_names_expr=STEER_JOINTS,
+            effort_limit_sim=1800.0,
+            velocity_limit_sim=8.0,
+            stiffness=1800.0,
+            damping=180.0,
+        ),
+        "lift": ImplicitActuatorCfg(
+            joint_names_expr=LIFT_JOINTS,
+            effort_limit_sim=4000.0,
+            velocity_limit_sim=2.0,
+            stiffness=3200.0,
+            damping=500.0,
+        ),
+        "suspension": ImplicitActuatorCfg(
+            joint_names_expr=SUSPENSION_JOINTS,
+            effort_limit_sim=1200.0,
+            velocity_limit_sim=1.5,
+            stiffness=1200.0,
+            damping=220.0,
+        ),
+        "wheel": ImplicitActuatorCfg(
+            joint_names_expr=WHEEL_JOINTS,
+            effort_limit_sim=8000.0,
+            velocity_limit_sim=20.0,
+            stiffness=0.0,
+            damping=500.0,
+        ),
     },
 )

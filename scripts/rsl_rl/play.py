@@ -80,12 +80,22 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 import Frbot_Lift.tasks  # noqa: F401
 
 
+TRAIN_TASK_OVERRIDES = {
+    "Inventory-Leveling-Play-v0": "Inventory-Leveling-v0",
+    "Inventory-Leveling-StablePlay-v0": "Inventory-Leveling-StableAdaptive-v0",
+}
+
+
+def resolve_train_task(task_name: str) -> str:
+    return TRAIN_TASK_OVERRIDES.get(task_name, task_name.replace("-Play", "") if "-Play" in task_name else task_name)
+
+
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Play with RSL-RL agent."""
     # grab task name for checkpoint path
     task_name = args_cli.task.split(":")[-1]
-    train_task_name = task_name.replace("-Play", "")
+    train_task_name = resolve_train_task(task_name)
 
     # override configurations with non-hydra CLI arguments
     agent_cfg: RslRlBaseRunnerCfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
