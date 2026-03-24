@@ -11,8 +11,22 @@ from typing import TYPE_CHECKING
 from isaaclab.assets import Articulation
 from isaaclab.managers import ManagerTermBase, SceneEntityCfg, TerminationTermCfg
 
+from .robot_frame import body_to_robot_frame
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+def bad_orientation_robot_frame(
+    env: "ManagerBasedRLEnv",
+    limit_angle: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate when the robot tilt exceeds the limit in the robot-aligned frame."""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    projected_gravity_robot = body_to_robot_frame(asset.data.projected_gravity_b)
+    return torch.acos((-projected_gravity_robot[:, 2]).clip(min=-1.0, max=1.0)).abs() > limit_angle
 
 
 def terrain_out_of_bounds(
@@ -25,6 +39,8 @@ def terrain_out_of_bounds(
     asset: Articulation = env.scene[asset_cfg.name]
     relative_pos = asset.data.root_pos_w[:, :2] - env.scene.env_origins[:, :2]
     return torch.any(torch.abs(relative_pos) > distance_limit, dim=1)
+
+
 class stalled_progress(ManagerTermBase):
     """Terminate if the robot fails to make enough x progress from its episode start pose."""
 

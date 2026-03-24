@@ -33,10 +33,11 @@ import gymnasium as gym
 import torch
 
 import Frbot_Lift.tasks  # noqa: F401
-import isaaclab.utils.math as math_utils
 from isaaclab_tasks.utils import get_checkpoint_path, load_cfg_from_registry, parse_env_cfg
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 from rsl_rl.runners import OnPolicyRunner
+
+from Frbot_Lift.tasks.manager_based.frbot_lift.mdp.robot_frame import body_to_robot_frame, robot_roll_pitch_from_gravity
 
 
 def resolve_project_root() -> Path:
@@ -66,8 +67,8 @@ def resolve_checkpoint(project_root: Path, task_name: str, checkpoint: str | Non
 
 
 def extract_metrics(base_env) -> tuple[float, float, float]:
-    quat = base_env.scene["robot"].data.root_quat_w[0:1]
-    roll, pitch, _ = math_utils.euler_xyz_from_quat(quat)
+    projected_gravity_robot = body_to_robot_frame(base_env.scene["robot"].data.projected_gravity_b[0:1])
+    roll, pitch = robot_roll_pitch_from_gravity(projected_gravity_robot)
     roll_deg = torch.rad2deg(roll).item()
     pitch_deg = torch.rad2deg(pitch).item()
     peak_tilt_deg = max(abs(roll_deg), abs(pitch_deg))
@@ -176,7 +177,7 @@ def main():
             roll_values.append(roll_deg)
             pitch_values.append(pitch_deg)
             peak_values.append(peak_tilt_deg)
-            forward_velocity = base_env.scene["robot"].data.root_lin_vel_b[0, 0].item()
+            forward_velocity = body_to_robot_frame(base_env.scene["robot"].data.root_lin_vel_b[0:1])[0, 0].item()
             forward_velocity_values.append(forward_velocity)
             abs_forward_velocity_values.append(abs(forward_velocity))
         env.close()
@@ -204,7 +205,7 @@ def main():
             roll_values.append(roll_deg)
             pitch_values.append(pitch_deg)
             peak_values.append(peak_tilt_deg)
-            forward_velocity = base_env.scene["robot"].data.root_lin_vel_b[0, 0].item()
+            forward_velocity = body_to_robot_frame(base_env.scene["robot"].data.root_lin_vel_b[0:1])[0, 0].item()
             forward_velocity_values.append(forward_velocity)
             abs_forward_velocity_values.append(abs(forward_velocity))
         vec_env.close()

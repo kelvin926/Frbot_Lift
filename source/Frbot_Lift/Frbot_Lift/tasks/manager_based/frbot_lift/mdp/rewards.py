@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
 
+from .robot_frame import body_to_robot_frame, robot_tilt_angle_from_gravity
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
@@ -24,7 +26,8 @@ def track_forward_speed_abs_exp(
     """Reward body-frame forward speed magnitude tracking with sign invariance."""
 
     asset: Articulation = env.scene[asset_cfg.name]
-    error = torch.square(torch.abs(asset.data.root_lin_vel_b[:, 0]) - target)
+    root_lin_vel_robot = body_to_robot_frame(asset.data.root_lin_vel_b)
+    error = torch.square(torch.abs(root_lin_vel_robot[:, 0]) - target)
     return torch.exp(-error / (std**2))
 
 
@@ -35,7 +38,8 @@ def forward_speed_abs(
     """Reward absolute body-frame forward speed."""
 
     asset: Articulation = env.scene[asset_cfg.name]
-    return torch.abs(asset.data.root_lin_vel_b[:, 0])
+    root_lin_vel_robot = body_to_robot_frame(asset.data.root_lin_vel_b)
+    return torch.abs(root_lin_vel_robot[:, 0])
 
 
 def forward_speed_deficit_l1(
@@ -46,7 +50,19 @@ def forward_speed_deficit_l1(
     """Penalize moving slower than the desired forward speed magnitude."""
 
     asset: Articulation = env.scene[asset_cfg.name]
-    return (target - torch.abs(asset.data.root_lin_vel_b[:, 0])).clip(min=0.0)
+    root_lin_vel_robot = body_to_robot_frame(asset.data.root_lin_vel_b)
+    return (target - torch.abs(root_lin_vel_robot[:, 0])).clip(min=0.0)
+
+
+def flat_orientation_robot_l2(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize non-flat orientation in the robot-aligned frame."""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    projected_gravity_robot = body_to_robot_frame(asset.data.projected_gravity_b)
+    return torch.sum(torch.square(projected_gravity_robot[:, :2]), dim=1)
 
 
 def tilt_margin_l2(
@@ -57,16 +73,39 @@ def tilt_margin_l2(
     """Penalize tilt angle once it exceeds a small upright margin."""
 
     asset: Articulation = env.scene[asset_cfg.name]
-    projected_gravity = asset.data.projected_gravity_b
-    tilt_angle = torch.atan2(torch.linalg.vector_norm(projected_gravity[:, :2], dim=1), (-projected_gravity[:, 2]).clip(min=1.0e-6))
+    projected_gravity_robot = body_to_robot_frame(asset.data.projected_gravity_b)
+    tilt_angle = robot_tilt_angle_from_gravity(projected_gravity_robot)
     return torch.square((tilt_angle - threshold).clip(min=0.0))
 
 
-def lateral_velocity_l2(
+def robot_ang_vel_xy_l2(
     env: "ManagerBasedRLEnv",
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Penalize lateral slip in the body frame."""
+    """Penalize roll/pitch rates in the robot-aligned frame."""
 
     asset: Articulation = env.scene[asset_cfg.name]
-    return torch.square(asset.data.root_lin_vel_b[:, 1])
+    root_ang_vel_robot = body_to_robot_frame(asset.data.root_ang_vel_b)
+    return torch.sum(torch.square(root_ang_vel_robot[:, :2]), dim=1)
+
+
+def robot_lin_vel_z_l2(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize vertical motion in the robot-aligned frame."""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    root_lin_vel_robot = body_to_robot_frame(asset.data.root_lin_vel_b)
+    return torch.square(root_lin_vel_robot[:, 2])
+
+
+def robot_lateral_velocity_l2(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize lateral slip in the robot-aligned frame."""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    root_lin_vel_robot = body_to_robot_frame(asset.data.root_lin_vel_b)
+    return torch.square(root_lin_vel_robot[:, 1])

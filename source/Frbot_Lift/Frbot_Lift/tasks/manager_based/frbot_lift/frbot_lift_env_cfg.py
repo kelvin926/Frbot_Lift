@@ -100,8 +100,8 @@ class FrbotLiftSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = FRBOT_LIFT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
     height_scanner = RayCasterCfg(
         prim_path=f"{{ENV_REGEX_NS}}/Robot{BASE_ATTACH_PRIM_PATH}",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 1.0)),
-        ray_alignment="yaw",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 1.0, 0.0)),
+        ray_alignment="world",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.15, size=(2.0, 1.4)),
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
@@ -137,9 +137,9 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Policy observations."""
 
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
-        projected_gravity = ObsTerm(func=mdp.projected_gravity)
+        base_lin_vel = ObsTerm(func=mdp.robot_base_lin_vel)
+        base_ang_vel = ObsTerm(func=mdp.robot_base_ang_vel)
+        projected_gravity = ObsTerm(func=mdp.robot_projected_gravity)
         suspension_pos = ObsTerm(
             func=mdp.joint_pos_rel,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
@@ -168,7 +168,7 @@ class EventCfg:
     """Reset events."""
 
     reset_root = EventTerm(
-        func=mdp.reset_root_state_uniform,
+        func=mdp.reset_root_state_uniform_robot_frame,
         mode="reset",
         params={
             "pose_range": {
@@ -211,15 +211,15 @@ class RewardsCfg:
         weight=-10.0,
         params={"term_keys": ["bad_orientation", "terrain_out_of_bounds", "stalled_progress"]},
     )
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-24.0)
+    flat_orientation = RewTerm(func=mdp.flat_orientation_robot_l2, weight=-24.0)
     tilt_margin = RewTerm(
         func=mdp.tilt_margin_l2,
         weight=-60.0,
         params={"threshold": math.radians(6.0)},
     )
-    angular_velocity = RewTerm(func=mdp.ang_vel_xy_l2, weight=-2.0)
-    vertical_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    lateral_velocity = RewTerm(func=mdp.lateral_velocity_l2, weight=-1.0)
+    angular_velocity = RewTerm(func=mdp.robot_ang_vel_xy_l2, weight=-2.0)
+    vertical_velocity = RewTerm(func=mdp.robot_lin_vel_z_l2, weight=-2.0)
+    lateral_velocity = RewTerm(func=mdp.robot_lateral_velocity_l2, weight=-1.0)
     forward_velocity = RewTerm(
         func=mdp.track_forward_speed_abs_exp,
         weight=8.0,
@@ -250,7 +250,7 @@ class TerminationsCfg:
     """Termination terms."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": math.radians(15.0)})
+    bad_orientation = DoneTerm(func=mdp.bad_orientation_robot_frame, params={"limit_angle": math.radians(15.0)})
     terrain_out_of_bounds = DoneTerm(func=mdp.terrain_out_of_bounds, params={"distance_limit": 2.4})
     stalled_progress = DoneTerm(func=mdp.stalled_progress, params={"min_progress": 0.03, "min_steps": 120})
 
