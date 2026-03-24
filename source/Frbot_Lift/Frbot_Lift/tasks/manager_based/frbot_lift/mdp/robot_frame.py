@@ -11,13 +11,15 @@ import torch
 def body_to_robot_frame(vector_b: torch.Tensor) -> torch.Tensor:
     """Map the imported Y-up body frame into a conventional robot frame (x forward, y lateral, z up)."""
 
-    return torch.stack((vector_b[..., 2], vector_b[..., 0], vector_b[..., 1]), dim=-1)
+    # The imported asset's body-Z axis points toward the robot's physical rear after the root correction, so negate it
+    # when constructing the robot-aligned x-forward frame used by rewards, commands, and debug arrows.
+    return torch.stack((-vector_b[..., 2], vector_b[..., 0], vector_b[..., 1]), dim=-1)
 
 
 def robot_to_body_frame(vector_robot: torch.Tensor) -> torch.Tensor:
     """Map vectors from the robot-aligned frame back into the imported raw body frame."""
 
-    return torch.stack((vector_robot[..., 1], vector_robot[..., 2], vector_robot[..., 0]), dim=-1)
+    return torch.stack((vector_robot[..., 1], vector_robot[..., 2], -vector_robot[..., 0]), dim=-1)
 
 
 def robot_tilt_angle_from_gravity(projected_gravity_robot: torch.Tensor) -> torch.Tensor:

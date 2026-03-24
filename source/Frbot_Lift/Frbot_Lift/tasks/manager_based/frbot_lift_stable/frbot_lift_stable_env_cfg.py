@@ -26,6 +26,7 @@ from Frbot_Lift.assets.frbot_lift_asset import (
     FORWARD_VELOCITY_TARGET_MPS,
     FRBOT_LIFT_STABLE_CFG,
     REFERENCE_BODY_NAME_EXPR,
+    STABLE_BASE_INIT_HEIGHT_M,
     STEER_POSITION_TARGETS_RAD,
     SUSPENSION_JOINTS,
     SUSPENSION_MIDPOINT_RAD,
@@ -246,7 +247,7 @@ class StableFlatEventCfg:
                 "pitch": (0.0, 0.0),
                 "yaw": (0.0, 0.0),
             },
-            "root_height": 0.10,
+            "root_height": STABLE_BASE_INIT_HEIGHT_M,
             "asset_cfg": SceneEntityCfg("robot"),
         },
     )
@@ -285,7 +286,7 @@ class StableAdaptiveEventCfg(StableFlatEventCfg):
                 "pitch": (0.0, 0.0),
                 "yaw": (0.0, 0.0),
             },
-            "root_height": 0.10,
+            "root_height": STABLE_BASE_INIT_HEIGHT_M,
             "asset_cfg": SceneEntityCfg("robot"),
         },
     )
