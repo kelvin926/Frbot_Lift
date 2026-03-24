@@ -61,25 +61,25 @@ ROUGH_INIT_POS_FLAT_PATCH_CFG = {
 
 MILD_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     curriculum=True,
-    size=(6.0, 6.0),
-    border_width=0.0,
-    num_rows=4,
-    num_cols=3,
+    size=(8.0, 8.0),
+    border_width=0.25,
+    num_rows=3,
+    num_cols=4,
     horizontal_scale=0.05,
     vertical_scale=0.001,
     slope_threshold=0.6,
     use_cache=False,
     sub_terrains={
         "plane": terrain_gen.MeshPlaneTerrainCfg(
-            proportion=0.66,
+            proportion=0.82,
             flat_patch_sampling=PLANE_INIT_POS_FLAT_PATCH_CFG,
         ),
         "rough_low": terrain_gen.HfRandomUniformTerrainCfg(
-            proportion=0.34,
-            noise_range=(0.003, 0.006),
+            proportion=0.18,
+            noise_range=(0.0015, 0.004),
             noise_step=0.001,
-            downsampled_scale=0.25,
-            border_width=2.0,
+            downsampled_scale=0.30,
+            border_width=1.5,
             flat_patch_sampling=ROUGH_INIT_POS_FLAT_PATCH_CFG,
         ),
     },
@@ -178,9 +178,9 @@ class StableAdaptiveActionsCfg(StableFlatActionsCfg):
         preserve_order=True,
         scale=1.0,
         rescale_to_limits=False,
-        alpha=0.12,
+        alpha=0.08,
         midpoint=SUSPENSION_MIDPOINT_RAD,
-        action_window=math.radians(1.0),
+        action_window=math.radians(0.6),
     )
 
 
@@ -296,7 +296,7 @@ class StableRewardsCfg:
     alive = RewTerm(func=mdp.task_phase_alive, weight=0.2)
     terminating = RewTerm(
         func=mdp.task_phase_terminated_term,
-        weight=-10.0,
+        weight=-4.0,
         params={
             "term_keys": [
                 "catastrophic_bad_orientation",
@@ -328,26 +328,26 @@ class StableRewardsCfg:
     )
     vertical_velocity = RewTerm(
         func=mdp.task_phase_lin_vel_z_l2,
-        weight=-1.5,
+        weight=-0.8,
         params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
     )
     lateral_velocity = RewTerm(
         func=mdp.task_phase_lateral_velocity_l2,
-        weight=-0.75,
+        weight=-0.4,
         params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
     )
     forward_velocity = RewTerm(
-        func=mdp.task_phase_forward_speed_exp,
-        weight=14.0,
+        func=mdp.task_phase_forward_speed_abs_exp,
+        weight=18.0,
         params={
             "target": FORWARD_VELOCITY_TARGET_MPS,
-            "std": 0.05,
+            "std": 0.08,
             "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
         },
     )
     forward_speed_deficit = RewTerm(
         func=mdp.task_phase_forward_speed_deficit_signed_l1,
-        weight=-10.0,
+        weight=-3.0,
         params={
             "target": FORWARD_VELOCITY_TARGET_MPS,
             "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
@@ -355,17 +355,17 @@ class StableRewardsCfg:
     )
     backward_speed = RewTerm(
         func=mdp.task_phase_backward_speed_l1,
-        weight=-6.0,
+        weight=-8.0,
         params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
     )
     suspension_centering = RewTerm(
         func=mdp.task_phase_joint_deviation_l1,
-        weight=-0.08,
+        weight=-0.12,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
     )
     suspension_limits = RewTerm(
         func=mdp.task_phase_joint_pos_limits,
-        weight=-2.0,
+        weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
     )
     action_rate = RewTerm(func=mdp.task_phase_action_rate_l2, weight=-0.02)
@@ -399,15 +399,15 @@ class StableTerminationsCfg:
     task_excessive_motion = DoneTerm(
         func=mdp.task_phase_excessive_motion,
         params={
-            "linear_speed_limit": 1.2,
-            "angular_speed_limit": 3.0,
+            "linear_speed_limit": 1.6,
+            "angular_speed_limit": 4.0,
             "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
         },
     )
     terrain_out_of_bounds = DoneTerm(
         func=mdp.task_phase_terrain_out_of_bounds,
         params={
-            "distance_limit": 2.4,
+            "distance_limit": 3.6,
             "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
         },
     )
@@ -426,8 +426,8 @@ class StableAdaptiveCurriculumCfg:
     terrain_levels = CurrTerm(
         func=mdp.phase_aware_terrain_levels_progress,
         params={
-            "progress_threshold": 0.05,
-            "regression_threshold": 0.01,
+            "progress_threshold": 0.08,
+            "regression_threshold": 0.02,
             "plane_terrain_types": (0, 1),
             "rough_terrain_types": (2,),
         },
@@ -436,7 +436,7 @@ class StableAdaptiveCurriculumCfg:
 
 @configclass
 class FrbotLiftStableFlatEnvCfg(ManagerBasedRLEnvCfg):
-    scene: StableFlatSceneCfg = StableFlatSceneCfg(num_envs=1024, env_spacing=6.0, replicate_physics=True)
+    scene: StableFlatSceneCfg = StableFlatSceneCfg(num_envs=1024, env_spacing=8.0, replicate_physics=True)
     observations: StableObservationsCfg = StableObservationsCfg()
     actions: StableFlatActionsCfg = StableFlatActionsCfg()
     events: StableFlatEventCfg = StableFlatEventCfg()
@@ -460,7 +460,7 @@ class FrbotLiftStableFlatEnvCfg(ManagerBasedRLEnvCfg):
 
 @configclass
 class FrbotLiftStableAdaptiveEnvCfg(ManagerBasedRLEnvCfg):
-    scene: StableAdaptiveSceneCfg = StableAdaptiveSceneCfg(num_envs=1024, env_spacing=6.0, replicate_physics=True)
+    scene: StableAdaptiveSceneCfg = StableAdaptiveSceneCfg(num_envs=1024, env_spacing=8.0, replicate_physics=True)
     observations: StableObservationsCfg = StableObservationsCfg()
     actions: StableAdaptiveActionsCfg = StableAdaptiveActionsCfg()
     events: StableAdaptiveEventCfg = StableAdaptiveEventCfg()
@@ -487,7 +487,7 @@ class FrbotLiftStablePlayEnvCfg(FrbotLiftStableAdaptiveEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.scene.num_envs = 8
-        self.scene.env_spacing = 6.0
+        self.scene.env_spacing = 8.0
         self.actions.drivetrain.debug_vis = True
         self.observations.policy.enable_corruption = False
         self.scene.terrain.max_init_terrain_level = None

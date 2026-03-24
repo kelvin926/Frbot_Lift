@@ -57,11 +57,11 @@ LIFT_JOINTS = [
 SUSPENSION_MIDPOINT_RAD = math.radians(-9.0)
 # The front wheel modules are steered to 180 deg while the rear modules stay at 0 deg.
 # To make the robot move in one consistent body-forward direction, the front and rear wheel spins must oppose.
-# Reduce the commanded drive another 3x so the policy learns leveling before speed.
-WHEEL_TARGET_RAD_S = math.radians(20.0 / 9.0)
+# Keep the commanded drive conservative so the suspension policy can focus on leveling on flat and mild rough terrain.
+WHEEL_TARGET_RAD_S = math.radians(20.0 / 12.0)
 # Keep the baseline drive deliberately slow so the suspension policy can focus on leveling.
-FORWARD_VELOCITY_TARGET_MPS = 0.016 / 9.0
-DRIVETRAIN_RAMP_DURATION_S = 10.0
+FORWARD_VELOCITY_TARGET_MPS = 0.016 / 12.0
+DRIVETRAIN_RAMP_DURATION_S = 12.0
 BASE_INIT_HEIGHT_M = 0.16
 STABLE_BASE_INIT_HEIGHT_M = 0.095
 # The imported USD uses a Y-up robot frame. Rotate the articulation root once at spawn so the lift stands upright in
@@ -70,7 +70,7 @@ BASE_INIT_ROT_WXYZ = (math.sqrt(0.5), math.sqrt(0.5), 0.0, 0.0)
 BOOTSTRAP_SETTLE_DURATION_S = 1.5
 BOOTSTRAP_LIFT_DURATION_S = 0.0
 BOOTSTRAP_HOLD_DURATION_S = 0.0
-BOOTSTRAP_DRIVE_RAMP_DURATION_S = 10.0
+BOOTSTRAP_DRIVE_RAMP_DURATION_S = 12.0
 
 STEER_POSITION_TARGETS_RAD = {
     "FL_steer": math.pi,
@@ -196,10 +196,10 @@ FRBOT_LIFT_STABLE_CFG = FRBOT_LIFT_CFG.replace(
         ),
         "wheel": ImplicitActuatorCfg(
             joint_names_expr=WHEEL_JOINTS,
-            effort_limit_sim=800.0,
-            velocity_limit_sim=4.0,
+            effort_limit_sim=500.0,
+            velocity_limit_sim=2.0,
             stiffness=0.0,
-            damping=2500.0,
+            damping=3000.0,
         ),
     },
 )
