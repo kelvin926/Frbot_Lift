@@ -8,10 +8,11 @@ from __future__ import annotations
 import torch
 from typing import TYPE_CHECKING
 
+import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation
 from isaaclab.managers import ManagerTermBase, SceneEntityCfg, TerminationTermCfg
 
-from .robot_frame import body_to_robot_frame
+from .robot_frame import body_to_robot_frame, robot_to_body_frame
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -42,18 +43,25 @@ def terrain_out_of_bounds(
 
 
 class stalled_progress(ManagerTermBase):
-    """Terminate if the robot fails to make enough x progress from its episode start pose."""
+    """Terminate if the robot fails to make enough forward progress from its episode start pose."""
 
     def __init__(self, cfg: TerminationTermCfg, env: "ManagerBasedRLEnv"):
         super().__init__(cfg, env)
         asset_cfg = cfg.params.get("asset_cfg", SceneEntityCfg("robot"))
         self._asset: Articulation = env.scene[asset_cfg.name]
-        self._start_x = torch.zeros(env.num_envs, device=env.device)
+        self._start_pos = torch.zeros(env.num_envs, 3, device=env.device)
+        self._start_forward_dir = torch.zeros(env.num_envs, 3, device=env.device)
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
         if env_ids is None:
             env_ids = slice(None)
-        self._start_x[env_ids] = self._asset.data.root_pos_w[env_ids, 0]
+        self._start_pos[env_ids] = self._asset.data.root_pos_w[env_ids]
+        forward_body = robot_to_body_frame(
+            torch.tensor([[1.0, 0.0, 0.0]], device=self._asset.device, dtype=torch.float32).repeat(
+                self._asset.data.root_quat_w[env_ids].shape[0], 1
+            )
+        )
+        self._start_forward_dir[env_ids] = math_utils.quat_apply(self._asset.data.root_quat_w[env_ids], forward_body)
 
     def __call__(
         self,
@@ -62,5 +70,6 @@ class stalled_progress(ManagerTermBase):
         min_steps: int,
         asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     ) -> torch.Tensor:
-        delta_x = torch.abs(self._asset.data.root_pos_w[:, 0] - self._start_x)
-        return (env.episode_length_buf > min_steps) & (delta_x < min_progress)
+        delta_pos = self._asset.data.root_pos_w - self._start_pos
+        delta_forward = torch.abs(torch.sum(delta_pos * self._start_forward_dir, dim=1))
+        return (env.episode_length_buf > min_steps) & (delta_forward < min_progress)

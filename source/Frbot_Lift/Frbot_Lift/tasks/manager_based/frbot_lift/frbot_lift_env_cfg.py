@@ -38,7 +38,7 @@ from . import mdp
 LEVELING_TERRAINS_CFG = TerrainGeneratorCfg(
     curriculum=True,
     size=(6.0, 6.0),
-    border_width=4.0,
+    border_width=1.0,
     num_rows=5,
     num_cols=5,
     horizontal_scale=0.05,
@@ -59,21 +59,11 @@ LEVELING_TERRAINS_CFG = TerrainGeneratorCfg(
             noise_step=0.001,
             border_width=0.2,
         ),
-        "bump_low": terrain_gen.MeshRepeatedBoxesTerrainCfg(
+        "rough_mid_dense": terrain_gen.HfRandomUniformTerrainCfg(
             proportion=0.25,
-            object_params_start=terrain_gen.MeshRepeatedBoxesTerrainCfg.ObjectCfg(
-                num_objects=2,
-                height=0.015,
-                size=(0.30, 0.30),
-                max_yx_angle=0.0,
-            ),
-            object_params_end=terrain_gen.MeshRepeatedBoxesTerrainCfg.ObjectCfg(
-                num_objects=5,
-                height=0.030,
-                size=(0.45, 0.45),
-                max_yx_angle=0.0,
-            ),
-            platform_width=2.0,
+            noise_range=(0.006, 0.012),
+            noise_step=0.001,
+            border_width=0.2,
         ),
     },
 )
@@ -126,6 +116,8 @@ class ActionsCfg:
         asset_name="robot",
         position_targets={**STEER_POSITION_TARGETS_RAD, **LIFT_POSITION_TARGETS_M},
         velocity_targets=WHEEL_VELOCITY_TARGETS_RAD_S,
+        target_velocity_robot=(FORWARD_VELOCITY_TARGET_MPS, 0.0, 0.0),
+        debug_vis=True,
     )
 
 
