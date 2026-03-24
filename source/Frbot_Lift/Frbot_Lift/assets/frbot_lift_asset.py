@@ -29,7 +29,9 @@ def _resolve_project_root() -> Path:
 
 
 PROJECT_ROOT = _resolve_project_root()
-ASSET_PATH = Path(os.environ.get("FRBOT_LIFT_ASSET_PATH", str(PROJECT_ROOT / "assets" / "robots" / "lift_amr_new.usd")))
+ASSET_PATH = Path(
+    os.environ.get("FRBOT_LIFT_ASSET_PATH", str(PROJECT_ROOT / "assets" / "robots" / "lift_amr_runtime.usda"))
+)
 
 ARTICULATION_ROOT_PRIM_PATH = "/AMR/tn__amrassy_rev10_mDo28f3/Group"
 BASE_ATTACH_PRIM_PATH = ARTICULATION_ROOT_PRIM_PATH

@@ -26,7 +26,7 @@ $env:PYTHONPATH = "E:\isaac-sim-5.1.0\site;E:\isaac-sim-5.1.0\extscache\omni.usd
 $env:PATH = "E:\isaac-sim-5.1.0\extscache\omni.usd.libs-1.0.1+69cbf6ad.wx64.r.cp311\bin;" + $env:PATH
 $env:RESOURCE_NAME = "IsaacSim"
 $env:FRBOT_LIFT_ROOT = $(if (Test-Path $projectRootAlias) { $projectRootAlias } else { $projectRoot })
-$env:FRBOT_LIFT_ASSET_PATH = Join-Path $env:FRBOT_LIFT_ROOT "assets\robots\lift_amr_new.usd"
+$env:FRBOT_LIFT_ASSET_PATH = Join-Path $env:FRBOT_LIFT_ROOT "assets\robots\lift_amr_runtime.usda"
 
 if (-not $PythonArgs -or $PythonArgs.Count -eq 0) {
     throw "Pass a python script or module arguments to run_python.ps1."
