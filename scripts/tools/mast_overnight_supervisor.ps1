@@ -2,6 +2,10 @@ param(
     [string] $Stage1RunDir = "R:\Frbot_Lift\logs\rsl_rl\inventory_leveling_mast_flat\2026-03-24_22-46-02",
     [int] $Stage1ProcessId = 55596,
     [string] $DeadlineLocal = "2026-03-25 09:00:00",
+    [string] $ContinuationGateLocal = "2026-03-25 08:00:00",
+    [string] $ProjectRootOverride = "",
+    [string] $CondaPythonOverride = "",
+    [string] $ResultsSubdirName = "overnight_mast",
     [int] $PrimaryNumEnvs = 4096,
     [int] $FallbackNumEnvs = 2048,
     [int] $Stage1TargetIteration = 3000,
@@ -9,28 +13,39 @@ param(
     [int] $Stage1ExtensionIterations = 1000,
     [int] $Stage2ExtensionIterations = 2000,
     [int] $PollSeconds = 120,
+    [int] $LaunchProbeDelaySeconds = 8,
+    [bool] $UseVisibleRunner = $true,
     [int] $CheckpointStaleMinutes = 10,
     [int] $ArtifactVideoLength = 600
 )
 
 $ErrorActionPreference = "Stop"
 
-$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$projectRoot = if ([string]::IsNullOrWhiteSpace($ProjectRootOverride)) {
+    (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+} else {
+    (Resolve-Path $ProjectRootOverride).Path
+}
 $runnerScript = Join-Path $projectRoot "scripts\tools\run_python.ps1"
 $scalarReaderScript = Join-Path $projectRoot "scripts\tools\read_tensorboard_scalars.py"
 $trainScript = Join-Path $projectRoot "scripts\rsl_rl\train.py"
 $artifactScript = Join-Path $projectRoot "scripts\generate_comparison_artifacts.py"
-$condaPython = "C:\Users\HYUNSEO\miniconda3\envs\env_isaaclab_2.3.1\python.exe"
+$visibleRunnerScript = Join-Path $projectRoot "scripts\tools\run_python_visible.cmd"
+$condaPython = if ([string]::IsNullOrWhiteSpace($CondaPythonOverride)) {
+    "C:\Users\HYUNSEO\miniconda3\envs\env_isaaclab_2.3.1\python.exe"
+} else {
+    $CondaPythonOverride
+}
 $stage1ExpRoot = Join-Path $projectRoot "logs\rsl_rl\inventory_leveling_mast_flat"
 $stage2ExpRoot = Join-Path $projectRoot "logs\rsl_rl\inventory_leveling_mast_adaptive"
 $defaultAssetPath = Join-Path $projectRoot "assets\robots\lift_amr_fixedlift_runtime.usda"
 $rigidAssetPath = Join-Path $projectRoot "assets\robots\lift_amr_fixedlift_rigidsusp_runtime.usda"
 $deadline = [datetime]::Parse($DeadlineLocal)
-$continuationGate = [datetime]::Parse("2026-03-25 08:00:00")
+$continuationGate = [datetime]::Parse($ContinuationGateLocal)
 
 $launchLogDir = Join-Path $projectRoot "artifacts\launch_logs"
 New-Item -ItemType Directory -Force -Path $launchLogDir | Out-Null
-$resultsRoot = Join-Path $projectRoot ("results\" + $deadline.ToString("yyyy-MM-dd") + "\overnight_mast")
+$resultsRoot = Join-Path $projectRoot ("results\" + $deadline.ToString("yyyy-MM-dd") + "\" + $ResultsSubdirName)
 New-Item -ItemType Directory -Force -Path $resultsRoot | Out-Null
 
 $stamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
@@ -311,7 +326,7 @@ function Wait-For-CheckpointProgress {
             }
         }
 
-        if ($null -eq (Get-Process -Id $PythonPid -ErrorAction SilentlyContinue)) {
+        if ($PythonPid -le 0 -or $null -eq (Get-Process -Id $PythonPid -ErrorAction SilentlyContinue)) {
             if ($ckpt -and $ckpt.Iteration -ge $TargetIteration) {
                 return [pscustomobject] @{
                     Result = "completed"
@@ -355,30 +370,85 @@ function Start-VisibleTrainingJob {
         [string] $Checkpoint = ""
     )
 
-    $cmdLine = "title $WindowTitle && cd /d R:\Frbot_Lift && call scripts\tools\run_python_visible.cmd scripts\rsl_rl\train.py --task $Task --num_envs $NumEnvs --max_iterations $MaxIterations --headless"
-    if ($RunName) {
-        $cmdLine += " --run_name $RunName"
-    }
-    if ($ResumeRun -and $Checkpoint) {
-        $cmdLine += " --resume --load_run $ResumeRun --checkpoint $Checkpoint"
-    }
+    if ($UseVisibleRunner) {
+        $cmdLine = "title $WindowTitle && cd /d `"$projectRoot`" && call `"$visibleRunnerScript`" scripts\rsl_rl\train.py --task $Task --num_envs $NumEnvs --max_iterations $MaxIterations --headless"
+        if ($RunName) {
+            $cmdLine += " --run_name $RunName"
+        }
+        if ($ResumeRun -and $Checkpoint) {
+            $cmdLine += " --resume --load_run $ResumeRun --checkpoint $Checkpoint"
+        }
 
-    $cmdProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/k $cmdLine" -PassThru
-    Start-Sleep -Seconds 8
-    $psChild = Get-CimInstance Win32_Process | Where-Object {
-        $_.ParentProcessId -eq $cmdProc.Id -and $_.Name -eq "powershell.exe"
-    } | Select-Object -First 1
-    Start-Sleep -Seconds 8
-    $pythonChild = if ($psChild) {
-        Get-CimInstance Win32_Process | Where-Object {
-            $_.ParentProcessId -eq $psChild.ProcessId -and $_.Name -eq "python.exe"
+        $cmdProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/k $cmdLine" -PassThru
+        Start-Sleep -Seconds $LaunchProbeDelaySeconds
+        $psChild = Get-CimInstance Win32_Process | Where-Object {
+            $_.ParentProcessId -eq $cmdProc.Id -and $_.Name -eq "powershell.exe"
         } | Select-Object -First 1
-    }
+        Start-Sleep -Seconds $LaunchProbeDelaySeconds
+        $pythonChild = if ($psChild) {
+            Get-CimInstance Win32_Process | Where-Object {
+                $_.ParentProcessId -eq $psChild.ProcessId -and $_.Name -eq "python.exe"
+            } | Select-Object -First 1
+        }
 
     $runDir = Get-LatestRunDir -ExperimentRoot $ExperimentRoot
+    if ($RunName) {
+        $expectedRunDir = Join-Path $ExperimentRoot $RunName
+        $waitDeadline = (Get-Date).AddSeconds([Math]::Max(5, $LaunchProbeDelaySeconds * 4))
+        while ((Get-Date) -lt $waitDeadline) {
+            if (Test-Path $expectedRunDir) {
+                $runDir = (Resolve-Path $expectedRunDir).Path
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    }
     return [pscustomobject] @{
         CmdPid = $cmdProc.Id
         PowerShellPid = $(if ($psChild) { $psChild.ProcessId } else { 0 })
+        PythonPid = $(if ($pythonChild) { $pythonChild.ProcessId } else { 0 })
+        RunDir = $runDir
+        }
+    }
+
+    $psArgs = @(
+        "-NoLogo",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $runnerScript,
+        "scripts\rsl_rl\train.py",
+        "--task", $Task,
+        "--num_envs", "$NumEnvs",
+        "--max_iterations", "$MaxIterations",
+        "--headless"
+    )
+    if ($RunName) {
+        $psArgs += @("--run_name", $RunName)
+    }
+    if ($ResumeRun -and $Checkpoint) {
+        $psArgs += @("--resume", "--load_run", $ResumeRun, "--checkpoint", $Checkpoint)
+    }
+
+    $psProc = Start-Process -FilePath "powershell.exe" -ArgumentList $psArgs -WorkingDirectory $projectRoot -PassThru
+    Start-Sleep -Seconds $LaunchProbeDelaySeconds
+    $pythonChild = Get-CimInstance Win32_Process | Where-Object {
+        $_.ParentProcessId -eq $psProc.Id -and $_.Name -eq "python.exe"
+    } | Select-Object -First 1
+
+    $runDir = Get-LatestRunDir -ExperimentRoot $ExperimentRoot
+    if ($RunName) {
+        $expectedRunDir = Join-Path $ExperimentRoot $RunName
+        $waitDeadline = (Get-Date).AddSeconds([Math]::Max(5, $LaunchProbeDelaySeconds * 4))
+        while ((Get-Date) -lt $waitDeadline) {
+            if (Test-Path $expectedRunDir) {
+                $runDir = (Resolve-Path $expectedRunDir).Path
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    return [pscustomobject] @{
+        CmdPid = 0
+        PowerShellPid = $psProc.Id
         PythonPid = $(if ($pythonChild) { $pythonChild.ProcessId } else { 0 })
         RunDir = $runDir
     }
