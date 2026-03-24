@@ -111,7 +111,8 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=SUSPENSION_JOINTS,
         preserve_order=True,
-        alpha=0.7,
+        scale=0.2,
+        alpha=0.15,
     )
     drivetrain = mdp.FixedJointTargetsActionCfg(
         asset_name="robot",
@@ -244,7 +245,7 @@ class TerminationsCfg:
     """Termination terms."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    bad_orientation = DoneTerm(func=mdp.bad_orientation_robot_frame, params={"limit_angle": math.radians(15.0)})
+    bad_orientation = DoneTerm(func=mdp.bad_orientation_robot_frame, params={"limit_angle": math.radians(10.0)})
     bad_root_height = DoneTerm(func=mdp.root_height_out_of_bounds, params={"min_height": 0.08, "max_height": 0.35})
     excessive_motion = DoneTerm(func=mdp.excessive_motion, params={"linear_speed_limit": 0.8, "angular_speed_limit": 2.0})
     terrain_out_of_bounds = DoneTerm(func=mdp.terrain_out_of_bounds, params={"distance_limit": 2.4})

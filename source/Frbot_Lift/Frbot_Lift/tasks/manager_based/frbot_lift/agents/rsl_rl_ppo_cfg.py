@@ -16,7 +16,7 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = "inventory_leveling"
     obs_groups = {"policy": ["policy"], "critic": ["policy"]}
     policy = RslRlPpoActorCriticCfg(
-        init_noise_std=0.35,
+        init_noise_std=0.03,
         noise_std_type="log",
         actor_obs_normalization=False,
         critic_obs_normalization=False,
@@ -28,7 +28,7 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.003,
+        entropy_coef=0.001,
         num_learning_epochs=5,
         num_mini_batches=4,
         learning_rate=5.0e-4,
