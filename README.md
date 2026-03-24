@@ -1,45 +1,124 @@
 # Frbot Lift Leveling
 
-Manager-based Isaac Lab task for keeping the inventory robot level while the lift stays fully extended.
+Manager-based Isaac Lab project for an inventory robot that must drive forward while keeping the chassis level with the lift fully extended.
 
 ## Environment
 
 - Conda: `env_isaaclab_2.3.1`
 - Isaac Sim: `E:\isaac-sim-5.1.0`
 - Isaac Lab: `E:\IsaacLab`
-- Project root: `E:\재고조사로봇\2603_재고조사로봇_학습\Frbot_Lift`
+- Workspace root: `E:\...\2603_...\`
+- Project root: `R:\Frbot_Lift`
 
-This project does not modify the original Isaac Lab or Isaac Sim folders.
-The robot USD is copied into this repo at `assets/robots/lift_amr_new.usd`.
+This repo does not modify the original Isaac Lab or Isaac Sim folders.
+The local `E:\IsaacLab\isaac_wheel` folder is intentionally ignored.
 
-## Windows Path Note
+## Windows Launching
 
-USD loading on Windows was unreliable on the original Korean path. Use `scripts\tools\run_python.ps1` for all runs.
-It creates and uses the ASCII-safe alias `R:\Frbot_Lift` and exports the required Isaac Sim environment variables.
+Always use [run_python.ps1](/R:/Frbot_Lift/scripts/tools/run_python.ps1) or [run_python_visible.cmd](/R:/Frbot_Lift/scripts/tools/run_python_visible.cmd).
 
-## Tasks
+These launchers:
 
-- `Inventory-Leveling-v0`: training task
-- `Inventory-Leveling-Play-v0`: playback and recording task
+- use the ASCII-safe alias `R:\Frbot_Lift`
+- set Isaac Sim / Isaac Lab environment variables
+- set `PYTHONPATH` for the local project package
+- allow overriding `FRBOT_LIFT_ASSET_PATH`
+- trim accidental trailing spaces from `FRBOT_LIFT_ASSET_PATH`
 
-Policy actions control only:
+## Robot Assets
 
-- `FL_suspenstion`
-- `FR_suspenstion`
-- `RL_suspenstion`
-- `RR_suspenstion`
+Source asset:
 
-Fixed controls:
+- [lift_amr_new.usd](/R:/Frbot_Lift/assets/robots/lift_amr_new.usd): copied original robot USD
 
-- Lift joints stay at maximum extension
-- `*_steer` joints stay at the USD forward-fixed values
-- `*_Wheel` joints provide constant straight driving velocity
+Runtime assets:
 
-## Install
+- [lift_amr_runtime.usda](/R:/Frbot_Lift/assets/robots/lift_amr_runtime.usda): early wrapper asset
+- [lift_amr_fixedlift_runtime.usda](/R:/Frbot_Lift/assets/robots/lift_amr_fixedlift_runtime.usda): lift fixed at maximum extension, steer locked forward
+- [lift_amr_fixedlift_rigidsusp_runtime.usda](/R:/Frbot_Lift/assets/robots/lift_amr_fixedlift_rigidsusp_runtime.usda): lift fixed, steer locked, suspension joints rigid-locked near midpoint
+
+Asset generation tool:
+
+- [generate_fixedlift_runtime.py](/R:/Frbot_Lift/scripts/tools/generate_fixedlift_runtime.py)
+
+Example:
 
 ```powershell
-.\scripts\tools\install_project.ps1
+.\scripts\tools\run_python.ps1 .\scripts\tools\generate_fixedlift_runtime.py --source .\assets\robots\lift_amr_new.usd --output .\assets\robots\lift_amr_fixedlift_runtime.usda
+.\scripts\tools\run_python.ps1 .\scripts\tools\generate_fixedlift_runtime.py --source .\assets\robots\lift_amr_new.usd --output .\assets\robots\lift_amr_fixedlift_rigidsusp_runtime.usda --lock-suspension
 ```
+
+## Control Assumptions
+
+Current stable setup:
+
+- lift joints are fixed at maximum extension
+- steer joints are locked to forward-facing values
+- wheel joints provide scripted straight driving
+- suspension joints are the only learned DOFs in the stable RL tasks
+
+Wheel-only debug setup:
+
+- no learned policy
+- no suspension action term
+- rigid suspension USD
+- wheel actuator only
+
+## Task Set
+
+Legacy tasks kept for reference:
+
+- `Inventory-Leveling-v0`
+- `Inventory-Leveling-Play-v0`
+
+Stable v2 tasks:
+
+- `Inventory-Leveling-StableFlat-v0`
+  - flat terrain only
+  - manager-based RL training
+  - suspension policy + scripted drivetrain
+- `Inventory-Leveling-StableAdaptive-v0`
+  - flat + mild rough terrain
+  - manager-based RL training
+  - suspension policy + scripted drivetrain
+- `Inventory-Leveling-StablePlay-v0`
+  - GUI / playback task for the stable adaptive setup
+  - no curriculum during play
+  - safe reset path for reliable GUI launch
+- `Inventory-Leveling-WheelOnlyPlay-v0`
+  - GUI / playback task with rigid suspension USD
+  - no learned policy
+  - wheel drive only
+
+Task registration lives in [__init__.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/tasks/manager_based/frbot_lift_stable/__init__.py).
+
+## Main Config Files
+
+- [frbot_lift_asset.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/assets/frbot_lift_asset.py)
+- [frbot_lift_stable_env_cfg.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/tasks/manager_based/frbot_lift_stable/frbot_lift_stable_env_cfg.py)
+- [actions.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/tasks/manager_based/frbot_lift_stable/mdp/actions.py)
+- [bootstrap.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/tasks/manager_based/frbot_lift_stable/mdp/bootstrap.py)
+- [events.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/tasks/manager_based/frbot_lift_stable/mdp/events.py)
+- [rewards.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/tasks/manager_based/frbot_lift_stable/mdp/rewards.py)
+- [terminations.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/tasks/manager_based/frbot_lift_stable/mdp/terminations.py)
+- [rsl_rl_flat_ppo_cfg.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/tasks/manager_based/frbot_lift_stable/agents/rsl_rl_flat_ppo_cfg.py)
+- [rsl_rl_adaptive_ppo_cfg.py](/R:/Frbot_Lift/source/Frbot_Lift/Frbot_Lift/tasks/manager_based/frbot_lift_stable/agents/rsl_rl_adaptive_ppo_cfg.py)
+
+## What Was Implemented
+
+Implemented over the course of stabilization:
+
+- external Isaac Lab project layout under `R:\Frbot_Lift`
+- copied robot USD under version control
+- manager-based stable training tasks separated from the broken early task
+- fixed-lift runtime USD generation
+- steer lock in stable training
+- slow scripted drivetrain with long ramp
+- mild-rough adaptive curriculum
+- GUI-safe play reset path
+- debug velocity arrows for drivetrain target/current velocity
+- rigid-suspension runtime USD for baseline inspection
+- wheel-only play task for non-learning drivetrain-only inspection
 
 ## Useful Commands
 
@@ -49,56 +128,96 @@ List registered environments:
 .\scripts\tools\run_python.ps1 .\scripts\list_envs.py
 ```
 
-Smoke-test zero actions:
+Train stable flat:
 
 ```powershell
-.\scripts\tools\run_python.ps1 .\scripts\zero_agent.py --task Inventory-Leveling-Play-v0 --num_envs 1 --headless
+.\scripts\tools\run_python.ps1 .\scripts\rsl_rl\train.py --task Inventory-Leveling-StableFlat-v0 --num_envs 256 --max_iterations 10000 --headless
 ```
 
-Train PPO:
+Train stable adaptive:
 
 ```powershell
-.\scripts\tools\run_python.ps1 .\scripts\rsl_rl\train.py --task Inventory-Leveling-v0 --num_envs 1024 --max_iterations 1500 --headless
+.\scripts\tools\run_python.ps1 .\scripts\rsl_rl\train.py --task Inventory-Leveling-StableAdaptive-v0 --num_envs 4096 --max_iterations 10000 --headless
 ```
 
-Short training smoke test:
+GUI train with visible CMD:
 
 ```powershell
-.\scripts\tools\run_python.ps1 .\scripts\rsl_rl\train.py --task Inventory-Leveling-v0 --num_envs 16 --max_iterations 2 --headless
+.\scripts\tools\run_python_visible.cmd scripts\rsl_rl\train.py --task Inventory-Leveling-StableFlat-v0 --num_envs 8 --max_iterations 10000
 ```
 
-Generate baseline video and metrics:
+Latest-checkpoint GUI play:
 
 ```powershell
-.\scripts\tools\run_python.ps1 .\scripts\generate_comparison_artifacts.py --mode baseline --task Inventory-Leveling-Play-v0 --video_length 600 --num_envs 1 --headless
+.\scripts\tools\run_python_visible.cmd scripts\rsl_rl\play.py --task Inventory-Leveling-StablePlay-v0 --num_envs 8 --checkpoint R:\Frbot_Lift\logs\rsl_rl\inventory_leveling_stable_adaptive\<run>\model_<n>.pt
 ```
 
-Generate learned video and metrics with a checkpoint:
+Rigid-suspension baseline play:
 
 ```powershell
-.\scripts\tools\run_python.ps1 .\scripts\generate_comparison_artifacts.py --mode learned --task Inventory-Leveling-Play-v0 --video_length 600 --num_envs 1 --checkpoint R:\Frbot_Lift\logs\rsl_rl\inventory_leveling\<run>\model_<n>.pt --headless
+set "FRBOT_LIFT_ASSET_PATH=R:\Frbot_Lift\assets\robots\lift_amr_fixedlift_rigidsusp_runtime.usda"
+.\scripts\tools\run_python_visible.cmd scripts\zero_agent.py --task Inventory-Leveling-StablePlay-v0 --num_envs 8
 ```
 
-Auto-extend long training for a wall-clock target:
+Wheel-only play on the current training floor:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tools\auto_extend_training.ps1 -Task Inventory-Leveling-v0 -NumEnvs 1024 -ChunkIterations 1500 -MinDurationHours 5.5 -RunNamePrefix wallclock_5h -InitialRunDir R:\Frbot_Lift\logs\rsl_rl\inventory_leveling\<run> -ActiveProcessId <pid> -PollSeconds 300 -GenerateArtifacts
+.\scripts\tools\run_python_visible.cmd scripts\zero_agent.py --task Inventory-Leveling-WheelOnlyPlay-v0 --num_envs 8
 ```
+
+Generate learned comparison artifacts:
+
+```powershell
+.\scripts\tools\run_python.ps1 .\scripts\generate_comparison_artifacts.py --mode learned --task Inventory-Leveling-StablePlay-v0 --video_length 600 --num_envs 1 --checkpoint R:\Frbot_Lift\logs\rsl_rl\inventory_leveling_stable_adaptive\<run>\model_<n>.pt --headless
+```
+
+Generate baseline comparison artifacts:
+
+```powershell
+.\scripts\tools\run_python.ps1 .\scripts\generate_comparison_artifacts.py --mode baseline --task Inventory-Leveling-StablePlay-v0 --video_length 600 --num_envs 1 --headless
+```
+
+## Current Training Notes
+
+The best recent long run used during tuning is:
+
+- [2026-03-24_18-42-27_quickconv_adaptive_mildrough_4096_10k](/R:/Frbot_Lift/logs/rsl_rl/inventory_leveling_stable_adaptive/2026-03-24_18-42-27_quickconv_adaptive_mildrough_4096_10k)
+
+At one inspected point around iteration `2097 / 10000`, the run showed:
+
+- mean reward around `0.49`
+- mean episode length around `698`
+- timeout termination around `96.5%`
+- catastrophic bad orientation around `0.1%`
+- terrain out of bounds around `0.02%`
+
+This means the stable adaptive task is no longer failing immediately and is mostly surviving full episodes on flat + mild rough terrain.
 
 ## Outputs
 
-Generated comparison artifacts are written to:
+Generated videos and metrics:
 
-- `artifacts/videos/baseline_straight.mp4`
-- `artifacts/videos/learned_straight.mp4`
-- `artifacts/metrics/tilt_metrics.csv`
+- [baseline_straight.mp4](/R:/Frbot_Lift/artifacts/videos/baseline_straight.mp4)
+- [learned_straight.mp4](/R:/Frbot_Lift/artifacts/videos/learned_straight.mp4)
+- [tilt_metrics.csv](/R:/Frbot_Lift/artifacts/metrics/tilt_metrics.csv)
 
-Training logs and checkpoints are written under:
+Published result snapshot:
+
+- [results/2026-03-24](/R:/Frbot_Lift/results/2026-03-24)
+
+Logs and checkpoints:
 
 - `logs/rsl_rl/inventory_leveling/`
+- `logs/rsl_rl/inventory_leveling_stable_flat/`
+- `logs/rsl_rl/inventory_leveling_stable_adaptive/`
+
+Launch metadata:
+
+- `artifacts/launch_logs/`
 
 ## Notes
 
-- The copied USD is version-controlled in this repository.
-- Generated artifacts and logs are ignored by git.
-- The local `isaac_wheel` folder inside `E:\IsaacLab` is intentionally not referenced.
+- Generated logs and most artifacts are gitignored.
+- Result snapshots under `results/` are intended for commit/push.
+- GUI play should use `num_envs=8`.
+- Long training is usually run headless, but visible CMD windows are preferred for user monitoring.

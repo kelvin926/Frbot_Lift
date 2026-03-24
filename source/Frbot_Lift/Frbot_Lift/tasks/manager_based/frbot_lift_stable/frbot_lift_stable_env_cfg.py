@@ -25,6 +25,7 @@ from Frbot_Lift.assets.frbot_lift_asset import (
     BASE_ATTACH_PRIM_PATH,
     FORWARD_VELOCITY_TARGET_MPS,
     FRBOT_LIFT_STABLE_CFG,
+    FRBOT_LIFT_WHEEL_ONLY_CFG,
     REFERENCE_BODY_NAME_EXPR,
     STABLE_BASE_INIT_HEIGHT_M,
     SUSPENSION_JOINTS,
@@ -148,6 +149,11 @@ class StableAdaptiveSceneCfg(InteractiveSceneCfg):
 
 
 @configclass
+class StableWheelOnlySceneCfg(StableAdaptiveSceneCfg):
+    robot: ArticulationCfg = FRBOT_LIFT_WHEEL_ONLY_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+
+@configclass
 class StableFlatActionsCfg:
     suspension = mdp.BootstrapWindowedSuspensionActionCfg(
         asset_name="robot",
@@ -185,6 +191,19 @@ class StableAdaptiveActionsCfg(StableFlatActionsCfg):
 
 
 @configclass
+class WheelOnlyActionsCfg:
+    drivetrain = mdp.BootstrapDrivetrainActionCfg(
+        asset_name="robot",
+        steer_position_targets=None,
+        lift_start_targets=None,
+        lift_max_targets=None,
+        wheel_velocity_targets=WHEEL_VELOCITY_TARGETS_RAD_S,
+        target_velocity_robot=(FORWARD_VELOCITY_TARGET_MPS, 0.0, 0.0),
+        debug_vis=True,
+    )
+
+
+@configclass
 class StableObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
@@ -209,6 +228,45 @@ class StableObservationsCfg:
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
         )
         previous_actions = ObsTerm(func=mdp.last_action, params={"action_name": "suspension"})
+        forward_command = ObsTerm(func=mdp.constant_forward_command, params={"value": FORWARD_VELOCITY_TARGET_MPS})
+        phase = ObsTerm(func=mdp.phase_index_obs)
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.0},
+            clip=(-2.0, 2.0),
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
+class WheelOnlyObservationsCfg:
+    @configclass
+    class PolicyCfg(ObsGroup):
+        base_lin_vel = ObsTerm(
+            func=mdp.reference_body_lin_vel_robot,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+        )
+        base_ang_vel = ObsTerm(
+            func=mdp.reference_body_ang_vel_robot,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+        )
+        projected_gravity = ObsTerm(
+            func=mdp.reference_body_projected_gravity_robot,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+        )
+        suspension_pos = ObsTerm(
+            func=mdp.joint_pos_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
+        )
+        suspension_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
+        )
         forward_command = ObsTerm(func=mdp.constant_forward_command, params={"value": FORWARD_VELOCITY_TARGET_MPS})
         phase = ObsTerm(func=mdp.phase_index_obs)
         height_scan = ObsTerm(
@@ -493,6 +551,22 @@ class FrbotLiftStablePlayEnvCfg(FrbotLiftStableAdaptiveEnvCfg):
         self.scene.terrain.max_init_terrain_level = None
         if self.scene.terrain.terrain_generator is not None:
             self.scene.terrain.terrain_generator.curriculum = False
-            self.scene.terrain.terrain_generator.num_rows = 4
+            self.scene.terrain.terrain_generator.num_rows = 3
             self.scene.terrain.terrain_generator.num_cols = 4
+            for sub_terrain in self.scene.terrain.terrain_generator.sub_terrains.values():
+                sub_terrain.flat_patch_sampling = None
+        # Play mode does not need terrain flat-patch spawn sampling. Use the safe
+        # uniform reset so GUI playback reliably launches even when rough tiles are present.
+        self.events = StableFlatEventCfg()
         self.curriculum = None
+
+
+@configclass
+class FrbotLiftWheelOnlyPlayEnvCfg(FrbotLiftStablePlayEnvCfg):
+    scene: StableWheelOnlySceneCfg = StableWheelOnlySceneCfg(num_envs=8, env_spacing=8.0, replicate_physics=True)
+    observations: WheelOnlyObservationsCfg = WheelOnlyObservationsCfg()
+    actions: WheelOnlyActionsCfg = WheelOnlyActionsCfg()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.actions.drivetrain.debug_vis = True

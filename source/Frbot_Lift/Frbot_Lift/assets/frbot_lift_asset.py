@@ -35,6 +35,7 @@ ASSET_PATH = Path(
         str(PROJECT_ROOT / "assets" / "robots" / "lift_amr_fixedlift_runtime.usda"),
     )
 )
+WHEEL_ONLY_ASSET_PATH = PROJECT_ROOT / "assets" / "robots" / "lift_amr_fixedlift_rigidsusp_runtime.usda"
 
 ARTICULATION_ROOT_PRIM_PATH = "/AMR/tn__amrassy_rev10_mDo28f3/Group"
 BASE_ATTACH_PRIM_PATH = ARTICULATION_ROOT_PRIM_PATH
@@ -194,6 +195,42 @@ FRBOT_LIFT_STABLE_CFG = FRBOT_LIFT_CFG.replace(
             stiffness=1200.0,
             damping=220.0,
         ),
+        "wheel": ImplicitActuatorCfg(
+            joint_names_expr=WHEEL_JOINTS,
+            effort_limit_sim=500.0,
+            velocity_limit_sim=2.0,
+            stiffness=0.0,
+            damping=3000.0,
+        ),
+    },
+)
+
+
+FRBOT_LIFT_WHEEL_ONLY_CFG = FRBOT_LIFT_STABLE_CFG.replace(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=str(WHEEL_ONLY_ASSET_PATH),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=False,
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=2,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, STABLE_BASE_INIT_HEIGHT_M),
+        rot=BASE_INIT_ROT_WXYZ,
+        joint_pos=STABLE_DEFAULT_JOINT_POSITIONS,
+        joint_vel={".*": 0.0},
+    ),
+    actuators={
         "wheel": ImplicitActuatorCfg(
             joint_names_expr=WHEEL_JOINTS,
             effort_limit_sim=500.0,

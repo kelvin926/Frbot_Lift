@@ -37,3 +37,13 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_adaptive_ppo_cfg:StableAdaptivePPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Inventory-Leveling-WheelOnlyPlay-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.frbot_lift_stable_env_cfg:FrbotLiftWheelOnlyPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_adaptive_ppo_cfg:StableAdaptivePPORunnerCfg",
+    },
+)

@@ -23,6 +23,13 @@ LOCKED_JOINT_LIMITS = {
     "steering/RR_steer": (-0.01, 0.01),
 }
 
+RIGID_SUSPENSION_LOCKED_JOINT_LIMITS = {
+    "FL_suspenstion": (-9.001, -8.999),
+    "FR_suspenstion": (-9.001, -8.999),
+    "RL_suspenstion": (-9.001, -8.999),
+    "RR_suspenstion": (-9.001, -8.999),
+}
+
 DISABLED_COLLISION_ROOTS = (
     f"/{DEFAULT_PRIM}/AMR/tn__WA24AV10100_TelescopicliftRev10_sW0RhD69Ch1",
     f"/{DEFAULT_PRIM}/AMR/tn__WA24AV106AMR_Lift_cover_frame_assy_iZ0c8Z0m0k1e469",
@@ -67,7 +74,7 @@ def _find_collision_prims(stage: Usd.Stage) -> list[str]:
     return sorted(set(collision_paths))
 
 
-def generate_runtime_usda(source_usd: Path, output_usda: Path) -> None:
+def generate_runtime_usda(source_usd: Path, output_usda: Path, lock_suspension: bool = False) -> None:
     stage = Usd.Stage.Open(str(source_usd))
     if stage is None:
         raise RuntimeError(f"Failed to open USD stage: {source_usd}")
@@ -110,7 +117,11 @@ def generate_runtime_usda(source_usd: Path, output_usda: Path) -> None:
     ]
 
     joint_override_tree: dict = {}
-    for joint_path, (lower, upper) in LOCKED_JOINT_LIMITS.items():
+    joint_limits = dict(LOCKED_JOINT_LIMITS)
+    if lock_suspension:
+        joint_limits.update(RIGID_SUSPENSION_LOCKED_JOINT_LIMITS)
+
+    for joint_path, (lower, upper) in joint_limits.items():
         _insert_path(joint_override_tree, joint_path, f"float physics:lowerLimit = {lower}")
         _insert_path(joint_override_tree, joint_path, f"float physics:upperLimit = {upper}")
     lines.extend(_emit_tree(joint_override_tree, indent=2))
@@ -136,12 +147,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate the fixed-lift Frbot runtime USDA.")
     parser.add_argument("--source", required=True, help="Path to the source robot USD.")
     parser.add_argument("--output", required=True, help="Path to the generated runtime USDA.")
+    parser.add_argument(
+        "--lock-suspension",
+        action="store_true",
+        help="Also rigid-lock the four suspension joints at the neutral midpoint.",
+    )
     args = parser.parse_args()
 
     source_usd = Path(args.source)
     output_usda = Path(args.output)
     output_usda.parent.mkdir(parents=True, exist_ok=True)
-    generate_runtime_usda(source_usd=source_usd, output_usda=output_usda)
+    generate_runtime_usda(
+        source_usd=source_usd,
+        output_usda=output_usda,
+        lock_suspension=args.lock_suspension,
+    )
     print(output_usda)
 
 
