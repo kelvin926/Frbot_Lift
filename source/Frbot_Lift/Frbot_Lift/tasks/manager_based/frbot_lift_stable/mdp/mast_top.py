@@ -55,9 +55,10 @@ def _ensure_mast_cache(
 
     ref_pos_w0 = asset.data.body_pos_w[0, reference_body_id].unsqueeze(0).repeat(len(candidate_ids), 1)
     ref_quat_w0 = asset.data.body_quat_w[0, reference_body_id].unsqueeze(0).repeat(len(candidate_ids), 1)
+    ref_heading_quat_w0 = math_utils.yaw_quat(ref_quat_w0)
     body_pos_w0 = asset.data.body_pos_w[0, candidate_ids_t]
     rel_pos_w0 = body_pos_w0 - ref_pos_w0
-    rel_pos_b0 = math_utils.quat_apply_inverse(ref_quat_w0, rel_pos_w0)
+    rel_pos_b0 = math_utils.quat_apply_inverse(ref_heading_quat_w0, rel_pos_w0)
     nominal_rel_pos_robot = body_to_robot_frame(rel_pos_b0)
 
     cache = {
@@ -141,7 +142,7 @@ def mast_top_relative_pos_robot(
 ) -> torch.Tensor:
     mast_pos_w = mast_top_pos_w(env, asset_cfg=asset_cfg, reference_cfg=reference_cfg)
     ref_pos_w = reference_body_pos_w(env, asset_cfg=reference_cfg)
-    ref_quat_w = reference_body_quat_w(env, asset_cfg=reference_cfg)
+    ref_quat_w = math_utils.yaw_quat(reference_body_quat_w(env, asset_cfg=reference_cfg))
     rel_pos_w = mast_pos_w - ref_pos_w
     rel_pos_b = math_utils.quat_apply_inverse(ref_quat_w, rel_pos_w)
     return body_to_robot_frame(rel_pos_b)
@@ -166,7 +167,7 @@ def mast_top_relative_lin_vel_robot(
 ) -> torch.Tensor:
     mast_lin_vel_w = mast_top_lin_vel_w(env, asset_cfg=asset_cfg, reference_cfg=reference_cfg)
     ref_lin_vel_w = reference_body_lin_vel_w(env, asset_cfg=reference_cfg)
-    ref_quat_w = reference_body_quat_w(env, asset_cfg=reference_cfg)
+    ref_quat_w = math_utils.yaw_quat(reference_body_quat_w(env, asset_cfg=reference_cfg))
     rel_lin_vel_w = mast_lin_vel_w - ref_lin_vel_w
     rel_lin_vel_b = math_utils.quat_apply_inverse(ref_quat_w, rel_lin_vel_w)
     return body_to_robot_frame(rel_lin_vel_b)

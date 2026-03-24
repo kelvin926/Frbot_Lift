@@ -636,7 +636,7 @@ class MastRewardsCfg:
             ]
         },
     )
-    mast_top_xy_displacement = RewTerm(func=mdp.task_phase_mast_top_xy_displacement_l2, weight=-60.0)
+    mast_top_xy_displacement = RewTerm(func=mdp.task_phase_mast_top_xy_displacement_l2, weight=-0.5)
     mast_top_xy_velocity = RewTerm(func=mdp.task_phase_mast_top_xy_velocity_l2, weight=-10.0)
     mast_top_vertical_velocity = RewTerm(func=mdp.task_phase_mast_top_vertical_velocity_l2, weight=-4.0)
     mast_top_angular_velocity = RewTerm(func=mdp.task_phase_mast_top_angular_velocity_l2, weight=-2.0)
