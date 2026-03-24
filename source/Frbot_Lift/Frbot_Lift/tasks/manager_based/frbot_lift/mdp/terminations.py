@@ -42,6 +42,33 @@ def terrain_out_of_bounds(
     return torch.any(torch.abs(relative_pos) > distance_limit, dim=1)
 
 
+def root_height_out_of_bounds(
+    env: "ManagerBasedRLEnv",
+    min_height: float,
+    max_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate when the base root leaves the expected near-ground height band."""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    relative_height = asset.data.root_pos_w[:, 2] - env.scene.env_origins[:, 2]
+    return (relative_height < min_height) | (relative_height > max_height)
+
+
+def excessive_motion(
+    env: "ManagerBasedRLEnv",
+    linear_speed_limit: float,
+    angular_speed_limit: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate unstable launches before they corrupt training."""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    linear_speed = torch.linalg.norm(asset.data.root_lin_vel_b, dim=1)
+    angular_speed = torch.linalg.norm(asset.data.root_ang_vel_b, dim=1)
+    return (linear_speed > linear_speed_limit) | (angular_speed > angular_speed_limit)
+
+
 class stalled_progress(ManagerTermBase):
     """Terminate if the robot fails to make enough forward progress from its episode start pose."""
 

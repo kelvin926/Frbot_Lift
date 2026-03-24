@@ -24,6 +24,7 @@ from isaaclab.utils import configclass
 from Frbot_Lift.assets.frbot_lift_asset import (
     BASE_ATTACH_PRIM_PATH,
     BASE_INIT_HEIGHT_M,
+    DRIVETRAIN_RAMP_DURATION_S,
     FORWARD_VELOCITY_TARGET_MPS,
     FRBOT_LIFT_CFG,
     LIFT_POSITION_TARGETS_M,
@@ -117,6 +118,7 @@ class ActionsCfg:
         position_targets={**STEER_POSITION_TARGETS_RAD, **LIFT_POSITION_TARGETS_M},
         velocity_targets=WHEEL_VELOCITY_TARGETS_RAD_S,
         target_velocity_robot=(FORWARD_VELOCITY_TARGET_MPS, 0.0, 0.0),
+        ramp_duration_s=DRIVETRAIN_RAMP_DURATION_S,
         debug_vis=True,
     )
 
@@ -164,11 +166,11 @@ class EventCfg:
         mode="reset",
         params={
             "pose_range": {
-                "x": (-0.10, 0.10),
-                "y": (-0.10, 0.10),
+                "x": (-0.05, 0.05),
+                "y": (-0.05, 0.05),
                 "z": (0.0, 0.0),
-                "roll": (-0.03, 0.03),
-                "pitch": (-0.03, 0.03),
+                "roll": (-0.01, 0.01),
+                "pitch": (-0.01, 0.01),
                 "yaw": (0.0, 0.0),
             },
             "velocity_range": {
@@ -201,7 +203,7 @@ class RewardsCfg:
     terminating = RewTerm(
         func=mdp.is_terminated_term,
         weight=-10.0,
-        params={"term_keys": ["bad_orientation", "terrain_out_of_bounds", "stalled_progress"]},
+        params={"term_keys": ["bad_orientation", "terrain_out_of_bounds", "stalled_progress", "bad_root_height", "excessive_motion"]},
     )
     flat_orientation = RewTerm(func=mdp.flat_orientation_robot_l2, weight=-24.0)
     tilt_margin = RewTerm(
@@ -243,8 +245,10 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     bad_orientation = DoneTerm(func=mdp.bad_orientation_robot_frame, params={"limit_angle": math.radians(15.0)})
+    bad_root_height = DoneTerm(func=mdp.root_height_out_of_bounds, params={"min_height": 0.08, "max_height": 0.35})
+    excessive_motion = DoneTerm(func=mdp.excessive_motion, params={"linear_speed_limit": 0.8, "angular_speed_limit": 2.0})
     terrain_out_of_bounds = DoneTerm(func=mdp.terrain_out_of_bounds, params={"distance_limit": 2.4})
-    stalled_progress = DoneTerm(func=mdp.stalled_progress, params={"min_progress": 0.03, "min_steps": 120})
+    stalled_progress = DoneTerm(func=mdp.stalled_progress, params={"min_progress": 0.01, "min_steps": 180})
 
 
 @configclass
@@ -253,7 +257,7 @@ class CurriculumCfg:
 
     terrain_levels = CurrTerm(
         func=mdp.terrain_levels_progress,
-        params={"progress_threshold": 0.20, "regression_threshold": 0.04},
+        params={"progress_threshold": 0.05, "regression_threshold": 0.01},
     )
 
 
@@ -278,6 +282,8 @@ class FrbotLiftEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         # The long lift and dense wheel contacts can overflow the default GPU collision stack in GUI training.
         self.sim.physx.gpu_collision_stack_size = 2**28
+        self.sim.physx.enable_external_forces_every_iteration = True
+        self.sim.physx.solve_articulation_contact_last = True
 
 
 @configclass

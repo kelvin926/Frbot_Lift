@@ -33,6 +33,7 @@ class FixedJointTargetsAction(ActionTerm):
             device=self.device,
             dtype=torch.float32,
         ).unsqueeze(0).repeat(self.num_envs, 1)
+        self._ramp_duration_s = float(getattr(cfg, "ramp_duration_s", 0.0))
 
         position_targets = getattr(cfg, "position_targets", None) or {}
         velocity_targets = getattr(cfg, "velocity_targets", None) or {}
@@ -73,7 +74,8 @@ class FixedJointTargetsAction(ActionTerm):
         if self._position_targets is not None:
             self._asset.set_joint_position_target(self._position_targets, joint_ids=self._position_joint_ids)
         if self._velocity_targets is not None:
-            self._asset.set_joint_velocity_target(self._velocity_targets, joint_ids=self._velocity_joint_ids)
+            ramp = self._velocity_ramp_scale()
+            self._asset.set_joint_velocity_target(self._velocity_targets * ramp, joint_ids=self._velocity_joint_ids)
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         if debug_vis:
@@ -104,7 +106,8 @@ class FixedJointTargetsAction(ActionTerm):
 
         current_velocity_robot = body_to_robot_frame(self._asset.data.root_lin_vel_b)
         current_scale, current_quat_w = self._resolve_velocity_to_arrow(current_velocity_robot)
-        target_scale, target_quat_w = self._resolve_velocity_to_arrow(self._target_velocity_robot)
+        target_velocity_robot = self._target_velocity_robot * self._velocity_ramp_scale()
+        target_scale, target_quat_w = self._resolve_velocity_to_arrow(target_velocity_robot)
 
         self.target_velocity_visualizer.visualize(marker_pos_w, target_quat_w, target_scale)
         self.current_velocity_visualizer.visualize(marker_pos_w, current_quat_w, current_scale)
@@ -123,6 +126,14 @@ class FixedJointTargetsAction(ActionTerm):
         arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, heading_angle)
         return arrow_scale, arrow_quat
 
+    def _velocity_ramp_scale(self) -> torch.Tensor:
+        if self._ramp_duration_s <= 0.0:
+            return torch.ones((self.num_envs, 1), device=self.device)
+
+        step_dt = float(getattr(self._env, "step_dt", self._env.cfg.sim.dt * self._env.cfg.decimation))
+        elapsed_s = self._env.episode_length_buf.to(dtype=torch.float32, device=self.device).unsqueeze(-1) * step_dt
+        return torch.clamp(elapsed_s / self._ramp_duration_s, min=0.0, max=1.0)
+
 
 @configclass
 class FixedJointTargetsActionCfg(ActionTermCfg):
@@ -132,3 +143,4 @@ class FixedJointTargetsActionCfg(ActionTermCfg):
     position_targets: dict[str, float] | None = None
     velocity_targets: dict[str, float] | None = None
     target_velocity_robot: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    ramp_duration_s: float = 0.0

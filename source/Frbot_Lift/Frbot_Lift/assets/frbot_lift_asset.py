@@ -50,9 +50,10 @@ LIFT_JOINTS = [
 
 SUSPENSION_MIDPOINT_RAD = math.radians(-9.0)
 # Positive wheel speed corresponds to forward motion in the robot-aligned frame after the Y-up root correction.
-WHEEL_TARGET_RAD_S = math.radians(314.0)
+WHEEL_TARGET_RAD_S = math.radians(31.4)
 # Use the observed baseline straight-drive speed as the nominal tracking target.
-FORWARD_VELOCITY_TARGET_MPS = 0.16
+FORWARD_VELOCITY_TARGET_MPS = 0.016
+DRIVETRAIN_RAMP_DURATION_S = 1.5
 BASE_INIT_HEIGHT_M = 0.16
 # The imported USD uses a Y-up robot frame. Rotate the articulation root once at spawn so the lift stands upright in
 # Isaac Sim's Z-up world, then convert observations/rewards back into a robot-aligned frame inside the task logic.
