@@ -25,8 +25,7 @@ from Frbot_Lift.assets.frbot_lift_asset import (
     BASE_ATTACH_PRIM_PATH,
     FORWARD_VELOCITY_TARGET_MPS,
     FRBOT_LIFT_STABLE_CFG,
-    LIFT_POSITION_TARGETS_M,
-    LIFT_RETRACTED_POSITION_TARGETS_M,
+    REFERENCE_BODY_NAME_EXPR,
     STEER_POSITION_TARGETS_RAD,
     SUSPENSION_JOINTS,
     SUSPENSION_MIDPOINT_RAD,
@@ -156,15 +155,15 @@ class StableFlatActionsCfg:
         preserve_order=True,
         scale=1.0,
         rescale_to_limits=False,
-        alpha=0.15,
+        alpha=0.05,
         midpoint=SUSPENSION_MIDPOINT_RAD,
-        action_window=math.radians(0.5),
+        action_window=math.radians(0.2),
     )
     drivetrain = mdp.BootstrapDrivetrainActionCfg(
         asset_name="robot",
         steer_position_targets=STEER_POSITION_TARGETS_RAD,
-        lift_start_targets=LIFT_RETRACTED_POSITION_TARGETS_M,
-        lift_max_targets=LIFT_POSITION_TARGETS_M,
+        lift_start_targets=None,
+        lift_max_targets=None,
         wheel_velocity_targets=WHEEL_VELOCITY_TARGETS_RAD_S,
         target_velocity_robot=(FORWARD_VELOCITY_TARGET_MPS, 0.0, 0.0),
         debug_vis=False,
@@ -179,9 +178,9 @@ class StableAdaptiveActionsCfg(StableFlatActionsCfg):
         preserve_order=True,
         scale=1.0,
         rescale_to_limits=False,
-        alpha=0.15,
+        alpha=0.12,
         midpoint=SUSPENSION_MIDPOINT_RAD,
-        action_window=math.radians(1.25),
+        action_window=math.radians(1.0),
     )
 
 
@@ -189,9 +188,18 @@ class StableAdaptiveActionsCfg(StableFlatActionsCfg):
 class StableObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
-        base_lin_vel = ObsTerm(func=mdp.robot_base_lin_vel)
-        base_ang_vel = ObsTerm(func=mdp.robot_base_ang_vel)
-        projected_gravity = ObsTerm(func=mdp.robot_projected_gravity)
+        base_lin_vel = ObsTerm(
+            func=mdp.reference_body_lin_vel_robot,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+        )
+        base_ang_vel = ObsTerm(
+            func=mdp.reference_body_ang_vel_robot,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+        )
+        projected_gravity = ObsTerm(
+            func=mdp.reference_body_projected_gravity_robot,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+        )
         suspension_pos = ObsTerm(
             func=mdp.joint_pos_rel,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
@@ -202,6 +210,7 @@ class StableObservationsCfg:
         )
         previous_actions = ObsTerm(func=mdp.last_action, params={"action_name": "suspension"})
         forward_command = ObsTerm(func=mdp.constant_forward_command, params={"value": FORWARD_VELOCITY_TARGET_MPS})
+        phase = ObsTerm(func=mdp.phase_index_obs)
         height_scan = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.0},
@@ -237,7 +246,7 @@ class StableFlatEventCfg:
                 "pitch": (0.0, 0.0),
                 "yaw": (0.0, 0.0),
             },
-            "root_height": 0.24,
+            "root_height": 0.10,
             "asset_cfg": SceneEntityCfg("robot"),
         },
     )
@@ -276,7 +285,7 @@ class StableAdaptiveEventCfg(StableFlatEventCfg):
                 "pitch": (0.0, 0.0),
                 "yaw": (0.0, 0.0),
             },
-            "root_height": 0.16,
+            "root_height": 0.10,
             "asset_cfg": SceneEntityCfg("robot"),
         },
     )
@@ -299,27 +308,59 @@ class StableRewardsCfg:
             ]
         },
     )
-    flat_orientation = RewTerm(func=mdp.task_phase_flat_orientation_l2, weight=-24.0)
+    flat_orientation = RewTerm(
+        func=mdp.task_phase_flat_orientation_l2,
+        weight=-20.0,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+    )
     tilt_margin = RewTerm(
         func=mdp.task_phase_tilt_margin_l2,
-        weight=-60.0,
-        params={"threshold": math.radians(6.0)},
+        weight=-45.0,
+        params={
+            "threshold": math.radians(6.0),
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
     )
-    angular_velocity = RewTerm(func=mdp.task_phase_ang_vel_xy_l2, weight=-2.0)
-    vertical_velocity = RewTerm(func=mdp.task_phase_lin_vel_z_l2, weight=-2.0)
+    angular_velocity = RewTerm(
+        func=mdp.task_phase_ang_vel_xy_l2,
+        weight=-1.5,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+    )
+    vertical_velocity = RewTerm(
+        func=mdp.task_phase_lin_vel_z_l2,
+        weight=-1.5,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+    )
+    lateral_velocity = RewTerm(
+        func=mdp.task_phase_lateral_velocity_l2,
+        weight=-0.75,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+    )
     forward_velocity = RewTerm(
-        func=mdp.task_phase_forward_speed_abs_exp,
-        weight=8.0,
-        params={"target": FORWARD_VELOCITY_TARGET_MPS, "std": 0.05},
+        func=mdp.task_phase_forward_speed_exp,
+        weight=14.0,
+        params={
+            "target": FORWARD_VELOCITY_TARGET_MPS,
+            "std": 0.05,
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
     )
     forward_speed_deficit = RewTerm(
-        func=mdp.task_phase_forward_speed_deficit_l1,
-        weight=-4.0,
-        params={"target": FORWARD_VELOCITY_TARGET_MPS},
+        func=mdp.task_phase_forward_speed_deficit_signed_l1,
+        weight=-10.0,
+        params={
+            "target": FORWARD_VELOCITY_TARGET_MPS,
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
+    )
+    backward_speed = RewTerm(
+        func=mdp.task_phase_backward_speed_l1,
+        weight=-6.0,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
     )
     suspension_centering = RewTerm(
         func=mdp.task_phase_joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.08,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
     )
     suspension_limits = RewTerm(
@@ -327,7 +368,7 @@ class StableRewardsCfg:
         weight=-2.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
     )
-    action_rate = RewTerm(func=mdp.task_phase_action_rate_l2, weight=-0.03)
+    action_rate = RewTerm(func=mdp.task_phase_action_rate_l2, weight=-0.02)
 
 
 @configclass
@@ -335,27 +376,48 @@ class StableTerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     catastrophic_bad_orientation = DoneTerm(
         func=mdp.catastrophic_bad_orientation_robot_frame,
-        params={"limit_angle": math.radians(35.0)},
+        params={
+            "limit_angle": math.radians(35.0),
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
     )
     catastrophic_root_height = DoneTerm(
-        func=mdp.catastrophic_root_height,
-        params={"min_height": -2.0, "max_height": 2.0},
+        func=mdp.catastrophic_articulation_root_height,
+        params={
+            "min_height": -0.30,
+            "max_height": 1.50,
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
     )
     task_bad_orientation = DoneTerm(
         func=mdp.task_phase_bad_orientation_robot_frame,
-        params={"limit_angle": math.radians(10.0)},
+        params={
+            "limit_angle": math.radians(10.0),
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
     )
     task_excessive_motion = DoneTerm(
         func=mdp.task_phase_excessive_motion,
-        params={"linear_speed_limit": 0.8, "angular_speed_limit": 2.0},
+        params={
+            "linear_speed_limit": 1.2,
+            "angular_speed_limit": 3.0,
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
     )
     terrain_out_of_bounds = DoneTerm(
         func=mdp.task_phase_terrain_out_of_bounds,
-        params={"distance_limit": 2.4},
+        params={
+            "distance_limit": 2.4,
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
     )
     stalled_progress = DoneTerm(
         func=mdp.phase_aware_stalled_progress,
-        params={"min_progress": 0.01, "min_steps": 180},
+        params={
+            "min_progress": 0.015,
+            "min_steps": 200,
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
     )
 
 

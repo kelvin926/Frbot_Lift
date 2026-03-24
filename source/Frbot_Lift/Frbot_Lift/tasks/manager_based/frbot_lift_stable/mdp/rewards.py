@@ -11,8 +11,15 @@ from typing import TYPE_CHECKING
 from isaaclab.managers import ManagerTermBase, RewardTermCfg, SceneEntityCfg
 
 from Frbot_Lift.tasks.manager_based.frbot_lift import mdp as frbot_mdp
+from Frbot_Lift.tasks.manager_based.frbot_lift.mdp.robot_frame import robot_tilt_angle_from_gravity
 
 from . import bootstrap
+from .reference_body import (
+    REFERENCE_BODY_CFG,
+    reference_body_ang_vel_robot,
+    reference_body_lin_vel_robot,
+    reference_body_projected_gravity_robot,
+)
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -43,48 +50,84 @@ class task_phase_terminated_term(ManagerTermBase):
 
 def task_phase_flat_orientation_l2(
     env: "ManagerBasedRLEnv",
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return frbot_mdp.flat_orientation_robot_l2(env, asset_cfg=asset_cfg) * _task_mask(env)
+    gravity_robot = reference_body_projected_gravity_robot(env, asset_cfg=asset_cfg)
+    return torch.sum(torch.square(gravity_robot[:, :2]), dim=1) * _task_mask(env)
 
 
 def task_phase_tilt_margin_l2(
     env: "ManagerBasedRLEnv",
     threshold: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return frbot_mdp.tilt_margin_l2(env, threshold=threshold, asset_cfg=asset_cfg) * _task_mask(env)
+    gravity_robot = reference_body_projected_gravity_robot(env, asset_cfg=asset_cfg)
+    tilt_angle = robot_tilt_angle_from_gravity(gravity_robot)
+    return torch.square((tilt_angle - threshold).clip(min=0.0)) * _task_mask(env)
 
 
 def task_phase_ang_vel_xy_l2(
     env: "ManagerBasedRLEnv",
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return frbot_mdp.robot_ang_vel_xy_l2(env, asset_cfg=asset_cfg) * _task_mask(env)
+    ang_vel_robot = reference_body_ang_vel_robot(env, asset_cfg=asset_cfg)
+    return torch.sum(torch.square(ang_vel_robot[:, :2]), dim=1) * _task_mask(env)
 
 
 def task_phase_lin_vel_z_l2(
     env: "ManagerBasedRLEnv",
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return frbot_mdp.robot_lin_vel_z_l2(env, asset_cfg=asset_cfg) * _task_mask(env)
+    lin_vel_robot = reference_body_lin_vel_robot(env, asset_cfg=asset_cfg)
+    return torch.square(lin_vel_robot[:, 2]) * _task_mask(env)
 
 
 def task_phase_forward_speed_abs_exp(
     env: "ManagerBasedRLEnv",
     target: float,
     std: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return frbot_mdp.track_forward_speed_abs_exp(env, target=target, std=std, asset_cfg=asset_cfg) * _task_mask(env)
+    lin_vel_robot = reference_body_lin_vel_robot(env, asset_cfg=asset_cfg)
+    error = torch.square(torch.abs(lin_vel_robot[:, 0]) - target)
+    return torch.exp(-error / (std**2)) * _task_mask(env)
+
+
+def task_phase_forward_speed_exp(
+    env: "ManagerBasedRLEnv",
+    target: float,
+    std: float,
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    lin_vel_robot = reference_body_lin_vel_robot(env, asset_cfg=asset_cfg)
+    error = torch.square(lin_vel_robot[:, 0] - target)
+    return torch.exp(-error / (std**2)) * _task_mask(env)
 
 
 def task_phase_forward_speed_deficit_l1(
     env: "ManagerBasedRLEnv",
     target: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return frbot_mdp.forward_speed_deficit_l1(env, target=target, asset_cfg=asset_cfg) * _task_mask(env)
+    lin_vel_robot = reference_body_lin_vel_robot(env, asset_cfg=asset_cfg)
+    return (target - torch.abs(lin_vel_robot[:, 0])).clip(min=0.0) * _task_mask(env)
+
+
+def task_phase_forward_speed_deficit_signed_l1(
+    env: "ManagerBasedRLEnv",
+    target: float,
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    lin_vel_robot = reference_body_lin_vel_robot(env, asset_cfg=asset_cfg)
+    return (target - lin_vel_robot[:, 0]).clip(min=0.0) * _task_mask(env)
+
+
+def task_phase_backward_speed_l1(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    lin_vel_robot = reference_body_lin_vel_robot(env, asset_cfg=asset_cfg)
+    return (-lin_vel_robot[:, 0]).clip(min=0.0) * _task_mask(env)
 
 
 def task_phase_joint_deviation_l1(
@@ -103,3 +146,11 @@ def task_phase_joint_pos_limits(
 
 def task_phase_action_rate_l2(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return frbot_mdp.action_rate_l2(env) * _task_mask(env)
+
+
+def task_phase_lateral_velocity_l2(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    lin_vel_robot = reference_body_lin_vel_robot(env, asset_cfg=asset_cfg)
+    return torch.square(lin_vel_robot[:, 1]) * _task_mask(env)

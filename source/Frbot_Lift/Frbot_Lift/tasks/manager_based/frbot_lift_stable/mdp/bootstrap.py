@@ -73,14 +73,20 @@ def phase_name_from_index(phase_idx: int) -> str:
     return PHASE_NAMES.get(int(phase_idx), f"unknown_{phase_idx}")
 
 
+def _phase_progress(elapsed_s: torch.Tensor, start_s: float, duration_s: float) -> torch.Tensor:
+    if duration_s <= 0.0:
+        return (elapsed_s >= start_s).to(dtype=torch.float32)
+    return torch.clamp((elapsed_s - start_s) / duration_s, min=0.0, max=1.0)
+
+
 def lift_progress(env: "ManagerBasedEnv") -> torch.Tensor:
     elapsed_s = elapsed_time_s(env)
-    return torch.clamp((elapsed_s - SETTLE_END_S) / BOOTSTRAP_LIFT_DURATION_S, min=0.0, max=1.0)
+    return _phase_progress(elapsed_s, SETTLE_END_S, BOOTSTRAP_LIFT_DURATION_S)
 
 
 def drive_progress(env: "ManagerBasedEnv") -> torch.Tensor:
     elapsed_s = elapsed_time_s(env)
-    return torch.clamp((elapsed_s - HOLD_MAX_END_S) / BOOTSTRAP_DRIVE_RAMP_DURATION_S, min=0.0, max=1.0)
+    return _phase_progress(elapsed_s, HOLD_MAX_END_S, BOOTSTRAP_DRIVE_RAMP_DURATION_S)
 
 
 def task_phase_mask(env: "ManagerBasedEnv") -> torch.Tensor:

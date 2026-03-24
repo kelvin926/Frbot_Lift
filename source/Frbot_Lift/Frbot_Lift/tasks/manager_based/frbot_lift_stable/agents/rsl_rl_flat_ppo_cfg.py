@@ -16,7 +16,7 @@ class StableFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = "inventory_leveling_stable_flat"
     obs_groups = {"policy": ["policy"], "critic": ["policy"]}
     policy = RslRlPpoActorCriticCfg(
-        init_noise_std=0.01,
+        init_noise_std=0.001,
         noise_std_type="log",
         actor_obs_normalization=False,
         critic_obs_normalization=False,
@@ -28,13 +28,13 @@ class StableFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.0005,
+        entropy_coef=0.0001,
         num_learning_epochs=5,
         num_mini_batches=4,
         learning_rate=5.0e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
-        desired_kl=0.008,
+        desired_kl=0.006,
         max_grad_norm=1.0,
     )

@@ -31,6 +31,20 @@ def track_forward_speed_abs_exp(
     return torch.exp(-error / (std**2))
 
 
+def track_forward_speed_exp(
+    env: "ManagerBasedRLEnv",
+    target: float,
+    std: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward signed robot-frame forward speed tracking."""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    root_lin_vel_robot = body_to_robot_frame(asset.data.root_lin_vel_b)
+    error = torch.square(root_lin_vel_robot[:, 0] - target)
+    return torch.exp(-error / (std**2))
+
+
 def forward_speed_abs(
     env: "ManagerBasedRLEnv",
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -52,6 +66,29 @@ def forward_speed_deficit_l1(
     asset: Articulation = env.scene[asset_cfg.name]
     root_lin_vel_robot = body_to_robot_frame(asset.data.root_lin_vel_b)
     return (target - torch.abs(root_lin_vel_robot[:, 0])).clip(min=0.0)
+
+
+def forward_speed_deficit_signed_l1(
+    env: "ManagerBasedRLEnv",
+    target: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize moving slower than the desired signed forward speed."""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    root_lin_vel_robot = body_to_robot_frame(asset.data.root_lin_vel_b)
+    return (target - root_lin_vel_robot[:, 0]).clip(min=0.0)
+
+
+def backward_speed_l1(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize reverse motion in the robot-aligned frame."""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    root_lin_vel_robot = body_to_robot_frame(asset.data.root_lin_vel_b)
+    return (-root_lin_vel_robot[:, 0]).clip(min=0.0)
 
 
 def flat_orientation_robot_l2(

@@ -10,13 +10,20 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
-from isaaclab.assets import Articulation
 from isaaclab.managers import ManagerTermBase, SceneEntityCfg, TerminationTermCfg
 
-from Frbot_Lift.tasks.manager_based.frbot_lift.mdp import terminations as base_terms
-from Frbot_Lift.tasks.manager_based.frbot_lift.mdp.robot_frame import robot_to_body_frame
+from Frbot_Lift.tasks.manager_based.frbot_lift.mdp.robot_frame import robot_tilt_angle_from_gravity, robot_to_body_frame
 
 from . import bootstrap
+from .reference_body import (
+    REFERENCE_BODY_CFG,
+    reference_body_ang_vel_robot,
+    reference_body_height,
+    reference_body_lin_vel_robot,
+    reference_body_pos_w,
+    reference_body_projected_gravity_robot,
+    reference_body_quat_w,
+)
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -25,51 +32,62 @@ if TYPE_CHECKING:
 def catastrophic_bad_orientation_robot_frame(
     env: "ManagerBasedRLEnv",
     limit_angle: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return base_terms.bad_orientation_robot_frame(env, limit_angle=limit_angle, asset_cfg=asset_cfg)
+    gravity_robot = reference_body_projected_gravity_robot(env, asset_cfg=asset_cfg)
+    return robot_tilt_angle_from_gravity(gravity_robot) > limit_angle
 
 
 def catastrophic_root_height(
     env: "ManagerBasedRLEnv",
     min_height: float,
     max_height: float,
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    height = reference_body_height(env, asset_cfg=asset_cfg)
+    return (height < min_height) | (height > max_height)
+
+
+def catastrophic_articulation_root_height(
+    env: "ManagerBasedRLEnv",
+    min_height: float,
+    max_height: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    return base_terms.root_height_out_of_bounds(env, min_height=min_height, max_height=max_height, asset_cfg=asset_cfg)
+    height = bootstrap.root_height_relative(env, asset_cfg=asset_cfg)
+    return (height < min_height) | (height > max_height)
 
 
 def task_phase_bad_orientation_robot_frame(
     env: "ManagerBasedRLEnv",
     limit_angle: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return bootstrap.task_phase_mask(env) & base_terms.bad_orientation_robot_frame(
-        env, limit_angle=limit_angle, asset_cfg=asset_cfg
-    )
+    gravity_robot = reference_body_projected_gravity_robot(env, asset_cfg=asset_cfg)
+    return bootstrap.task_phase_mask(env) & (robot_tilt_angle_from_gravity(gravity_robot) > limit_angle)
 
 
 def task_phase_terrain_out_of_bounds(
     env: "ManagerBasedRLEnv",
     distance_limit: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return bootstrap.task_phase_mask(env) & base_terms.terrain_out_of_bounds(
-        env, distance_limit=distance_limit, asset_cfg=asset_cfg
-    )
+    relative_pos = reference_body_pos_w(env, asset_cfg=asset_cfg)[:, :2] - env.scene.env_origins[:, :2]
+    return bootstrap.task_phase_mask(env) & torch.any(torch.abs(relative_pos) > distance_limit, dim=1)
 
 
 def task_phase_excessive_motion(
     env: "ManagerBasedRLEnv",
     linear_speed_limit: float,
     angular_speed_limit: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
 ) -> torch.Tensor:
-    return bootstrap.task_phase_mask(env) & base_terms.excessive_motion(
-        env,
-        linear_speed_limit=linear_speed_limit,
-        angular_speed_limit=angular_speed_limit,
-        asset_cfg=asset_cfg,
+    lin_vel_robot = reference_body_lin_vel_robot(env, asset_cfg=asset_cfg)
+    ang_vel_robot = reference_body_ang_vel_robot(env, asset_cfg=asset_cfg)
+    linear_speed = torch.linalg.norm(lin_vel_robot, dim=1)
+    angular_speed = torch.linalg.norm(ang_vel_robot, dim=1)
+    return bootstrap.task_phase_mask(env) & (
+        (linear_speed > linear_speed_limit) | (angular_speed > angular_speed_limit)
     )
 
 
@@ -78,8 +96,7 @@ class phase_aware_stalled_progress(ManagerTermBase):
 
     def __init__(self, cfg: TerminationTermCfg, env: "ManagerBasedRLEnv"):
         super().__init__(cfg, env)
-        asset_cfg = cfg.params.get("asset_cfg", SceneEntityCfg("robot"))
-        self._asset: Articulation = env.scene[asset_cfg.name]
+        self._asset_cfg = cfg.params.get("asset_cfg", REFERENCE_BODY_CFG)
         self._task_started = torch.zeros(env.num_envs, device=env.device, dtype=torch.bool)
         self._task_start_step = torch.zeros(env.num_envs, device=env.device, dtype=torch.long)
         self._start_pos = torch.zeros(env.num_envs, 3, device=env.device)
@@ -98,21 +115,23 @@ class phase_aware_stalled_progress(ManagerTermBase):
         env: "ManagerBasedRLEnv",
         min_progress: float,
         min_steps: int,
-        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
     ) -> torch.Tensor:
         task_phase_mask = bootstrap.task_phase_mask(env)
         newly_armed = task_phase_mask & (~self._task_started)
         if torch.any(newly_armed):
             env_ids = newly_armed.nonzero(as_tuple=True)[0]
-            self._start_pos[env_ids] = self._asset.data.root_pos_w[env_ids]
+            body_pos_w = reference_body_pos_w(env, asset_cfg=self._asset_cfg)
+            body_quat_w = reference_body_quat_w(env, asset_cfg=self._asset_cfg)
+            self._start_pos[env_ids] = body_pos_w[env_ids]
             self._task_start_step[env_ids] = env.episode_length_buf[env_ids]
             forward_body = robot_to_body_frame(
-                torch.tensor([[1.0, 0.0, 0.0]], device=self._asset.device, dtype=torch.float32).repeat(len(env_ids), 1)
+                torch.tensor([[1.0, 0.0, 0.0]], device=env.device, dtype=torch.float32).repeat(len(env_ids), 1)
             )
-            self._start_forward_dir[env_ids] = math_utils.quat_apply(self._asset.data.root_quat_w[env_ids], forward_body)
+            self._start_forward_dir[env_ids] = math_utils.quat_apply(body_quat_w[env_ids], forward_body)
             self._task_started[env_ids] = True
 
-        delta_pos = self._asset.data.root_pos_w - self._start_pos
+        delta_pos = reference_body_pos_w(env, asset_cfg=self._asset_cfg) - self._start_pos
         delta_forward = torch.abs(torch.sum(delta_pos * self._start_forward_dir, dim=1))
         task_steps = env.episode_length_buf - self._task_start_step
         return self._task_started & task_phase_mask & (task_steps > min_steps) & (delta_forward < min_progress)

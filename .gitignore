@@ -14,6 +14,7 @@
 **/*.usdc
 **/*.usdz
 !assets/robots/lift_amr_new.usd
+!assets/robots/lift_amr_fixedlift_runtime.usda
 
 # Python
 .DS_Store

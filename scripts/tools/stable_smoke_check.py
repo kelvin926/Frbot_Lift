@@ -38,11 +38,17 @@ from isaaclab_tasks.utils import parse_env_cfg
 
 from Frbot_Lift.assets.frbot_lift_asset import WHEEL_JOINTS
 from Frbot_Lift.tasks.manager_based.frbot_lift.mdp.robot_frame import (
-    body_to_robot_frame,
     robot_roll_pitch_from_gravity,
     robot_to_body_frame,
 )
 from Frbot_Lift.tasks.manager_based.frbot_lift_stable.mdp.bootstrap import phase_index, phase_name_from_index
+from Frbot_Lift.tasks.manager_based.frbot_lift_stable.mdp.reference_body import (
+    reference_body_height,
+    reference_body_lin_vel_robot,
+    reference_body_pos_w,
+    reference_body_projected_gravity_robot,
+    reference_body_quat_w,
+)
 
 
 def main() -> None:
@@ -75,11 +81,11 @@ def main() -> None:
         env.reset()
         log_progress("env_reset")
         base_env = env.unwrapped
-        initial_root_pos_w = base_env.scene["robot"].data.root_pos_w.clone()
+        initial_root_pos_w = reference_body_pos_w(base_env).clone()
         forward_body = robot_to_body_frame(
             torch.tensor([[1.0, 0.0, 0.0]], device=base_env.device, dtype=torch.float32).repeat(base_env.num_envs, 1)
         )
-        initial_forward_dir_w = math_utils.quat_apply(base_env.scene["robot"].data.root_quat_w, forward_body)
+        initial_forward_dir_w = math_utils.quat_apply(reference_body_quat_w(base_env), forward_body)
         initial_forward_dir_w = torch.nn.functional.normalize(initial_forward_dir_w, dim=1)
         wheel_joint_ids, _ = base_env.scene["robot"].find_joints(WHEEL_JOINTS, preserve_order=True)
         first_two_sec_steps = int(round(2.0 / base_env.step_dt))
@@ -120,17 +126,18 @@ def main() -> None:
                 log_progress("first_step_done")
             done = terminated | truncated
 
-            root_height = base_env.scene["robot"].data.root_pos_w[:, 2] - base_env.scene.env_origins[:, 2]
+            root_height = reference_body_height(base_env)
             lowest_body_height = torch.min(base_env.scene["robot"].data.body_pos_w[..., 2], dim=1).values - base_env.scene.env_origins[:, 2]
             min_root_height = min(min_root_height, float(root_height.min().item()))
             max_root_height = max(max_root_height, float(root_height.max().item()))
             min_lowest_body_height = min(min_lowest_body_height, float(lowest_body_height.min().item()))
             max_lowest_body_height = max(max_lowest_body_height, float(lowest_body_height.max().item()))
 
-            projected_gravity_robot = body_to_robot_frame(base_env.scene["robot"].data.projected_gravity_b)
+            projected_gravity_robot = reference_body_projected_gravity_robot(base_env)
             roll, pitch = robot_roll_pitch_from_gravity(projected_gravity_robot)
             peak_tilt_deg = torch.maximum(torch.abs(torch.rad2deg(roll)), torch.abs(torch.rad2deg(pitch)))
             max_peak_tilt_deg = max(max_peak_tilt_deg, float(peak_tilt_deg.max().item()))
+            step_forward_velocity = reference_body_lin_vel_robot(base_env)[:, 0]
 
             if step < first_two_sec_steps:
                 catastrophic = (
@@ -143,7 +150,7 @@ def main() -> None:
 
             if first_done_step is None and bool(done.any().item()):
                 first_done_step = step
-            if step < 20:
+            if step < min(args_cli.steps, 120):
                 term_envs = {
                     term_name: (
                         base_env.termination_manager.get_term(term_name).nonzero(as_tuple=True)[0].detach().cpu().tolist()
@@ -162,6 +169,10 @@ def main() -> None:
                         "root_height_max": float(root_height.max().item()),
                         "lowest_body_height_min": float(lowest_body_height.min().item()),
                         "lowest_body_height_max": float(lowest_body_height.max().item()),
+                        "roll_deg": torch.rad2deg(roll).detach().cpu().tolist(),
+                        "pitch_deg": torch.rad2deg(pitch).detach().cpu().tolist(),
+                        "forward_velocity_mps": step_forward_velocity.detach().cpu().tolist(),
+                        "phase_indices": phase_index(base_env).detach().cpu().tolist(),
                         "catastrophic_root_height_count": int(
                             base_env.termination_manager.get_term("catastrophic_root_height").sum().item()
                         ),
@@ -179,8 +190,8 @@ def main() -> None:
             for term_name in base_env.termination_manager.active_terms
         }
 
-        forward_velocity = body_to_robot_frame(base_env.scene["robot"].data.root_lin_vel_b)[:, 0]
-        delta_pos_w = base_env.scene["robot"].data.root_pos_w - initial_root_pos_w
+        forward_velocity = reference_body_lin_vel_robot(base_env)[:, 0]
+        delta_pos_w = reference_body_pos_w(base_env) - initial_root_pos_w
         forward_progress_m = torch.sum(delta_pos_w * initial_forward_dir_w, dim=1)
         artifact = {
             "task": args_cli.task,
