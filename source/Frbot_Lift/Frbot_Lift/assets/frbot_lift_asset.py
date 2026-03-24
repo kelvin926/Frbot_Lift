@@ -62,6 +62,8 @@ SUSPENSION_MIDPOINT_RAD = math.radians(-9.0)
 WHEEL_TARGET_RAD_S = math.radians(20.0 / 12.0)
 # Keep the baseline drive deliberately slow so the suspension policy can focus on leveling.
 FORWARD_VELOCITY_TARGET_MPS = 0.016 / 12.0
+MAST_WHEEL_TARGET_RAD_S = WHEEL_TARGET_RAD_S * 2.0
+MAST_FORWARD_VELOCITY_TARGET_MPS = FORWARD_VELOCITY_TARGET_MPS * 2.0
 DRIVETRAIN_RAMP_DURATION_S = 12.0
 BASE_INIT_HEIGHT_M = 0.16
 STABLE_BASE_INIT_HEIGHT_M = 0.095
@@ -82,6 +84,10 @@ STEER_POSITION_TARGETS_RAD = {
 WHEEL_VELOCITY_TARGETS_RAD_S = {
     **{joint_name: WHEEL_TARGET_RAD_S for joint_name in FRONT_WHEEL_JOINTS},
     **{joint_name: -WHEEL_TARGET_RAD_S for joint_name in REAR_WHEEL_JOINTS},
+}
+MAST_WHEEL_VELOCITY_TARGETS_RAD_S = {
+    **{joint_name: MAST_WHEEL_TARGET_RAD_S for joint_name in FRONT_WHEEL_JOINTS},
+    **{joint_name: -MAST_WHEEL_TARGET_RAD_S for joint_name in REAR_WHEEL_JOINTS},
 }
 LIFT_POSITION_TARGETS_M = {
     "Link_1to7_2_joint": 5.4,

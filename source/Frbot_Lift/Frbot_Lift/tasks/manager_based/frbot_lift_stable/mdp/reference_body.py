@@ -57,6 +57,24 @@ def reference_body_height(
     return reference_body_pos_w(env, asset_cfg=asset_cfg)[:, 2] - env.scene.env_origins[:, 2]
 
 
+def reference_body_lin_vel_w(
+    env: "ManagerBasedEnv",
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+    body_id = _reference_body_id(asset, asset_cfg)
+    return asset.data.body_lin_vel_w[:, body_id]
+
+
+def reference_body_ang_vel_w(
+    env: "ManagerBasedEnv",
+    asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+    body_id = _reference_body_id(asset, asset_cfg)
+    return asset.data.body_ang_vel_w[:, body_id]
+
+
 def reference_body_lin_vel_robot(
     env: "ManagerBasedEnv",
     asset_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,

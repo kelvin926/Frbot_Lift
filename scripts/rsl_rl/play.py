@@ -83,6 +83,7 @@ import Frbot_Lift.tasks  # noqa: F401
 TRAIN_TASK_OVERRIDES = {
     "Inventory-Leveling-Play-v0": "Inventory-Leveling-v0",
     "Inventory-Leveling-StablePlay-v0": "Inventory-Leveling-StableAdaptive-v0",
+    "Inventory-Leveling-MastPlay-v0": "Inventory-Leveling-MastAdaptive-v0",
 }
 
 

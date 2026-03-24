@@ -20,6 +20,11 @@ from .reference_body import (
     reference_body_lin_vel_robot,
     reference_body_projected_gravity_robot,
 )
+from .mast_top import (
+    mast_top_ang_vel_robot,
+    mast_top_relative_lin_vel_robot,
+    mast_top_relative_pos_robot_deviation,
+)
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -154,3 +159,39 @@ def task_phase_lateral_velocity_l2(
 ) -> torch.Tensor:
     lin_vel_robot = reference_body_lin_vel_robot(env, asset_cfg=asset_cfg)
     return torch.square(lin_vel_robot[:, 1]) * _task_mask(env)
+
+
+def task_phase_mast_top_xy_displacement_l2(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    reference_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    rel_pos_robot = mast_top_relative_pos_robot_deviation(env, asset_cfg=asset_cfg, reference_cfg=reference_cfg)
+    return torch.sum(torch.square(rel_pos_robot[:, :2]), dim=1) * _task_mask(env)
+
+
+def task_phase_mast_top_xy_velocity_l2(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    reference_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    rel_vel_robot = mast_top_relative_lin_vel_robot(env, asset_cfg=asset_cfg, reference_cfg=reference_cfg)
+    return torch.sum(torch.square(rel_vel_robot[:, :2]), dim=1) * _task_mask(env)
+
+
+def task_phase_mast_top_vertical_velocity_l2(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    reference_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    rel_vel_robot = mast_top_relative_lin_vel_robot(env, asset_cfg=asset_cfg, reference_cfg=reference_cfg)
+    return torch.square(rel_vel_robot[:, 2]) * _task_mask(env)
+
+
+def task_phase_mast_top_angular_velocity_l2(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    reference_cfg: SceneEntityCfg = REFERENCE_BODY_CFG,
+) -> torch.Tensor:
+    ang_vel_robot = mast_top_ang_vel_robot(env, asset_cfg=asset_cfg, reference_cfg=reference_cfg)
+    return torch.sum(torch.square(ang_vel_robot), dim=1) * _task_mask(env)

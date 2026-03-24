@@ -26,6 +26,8 @@ from Frbot_Lift.assets.frbot_lift_asset import (
     FORWARD_VELOCITY_TARGET_MPS,
     FRBOT_LIFT_STABLE_CFG,
     FRBOT_LIFT_WHEEL_ONLY_CFG,
+    MAST_FORWARD_VELOCITY_TARGET_MPS,
+    MAST_WHEEL_VELOCITY_TARGETS_RAD_S,
     REFERENCE_BODY_NAME_EXPR,
     STABLE_BASE_INIT_HEIGHT_M,
     SUSPENSION_JOINTS,
@@ -60,6 +62,18 @@ ROUGH_INIT_POS_FLAT_PATCH_CFG = {
 }
 
 
+MAST_ROUGH_INIT_POS_FLAT_PATCH_CFG = {
+    "init_pos": FlatPatchSamplingCfg(
+        num_patches=32,
+        patch_radius=[0.18, 0.18],
+        x_range=(-1.85, -1.55),
+        y_range=(-0.3, 0.3),
+        z_range=(-0.05, 0.08),
+        max_height_diff=0.008,
+    )
+}
+
+
 MILD_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     curriculum=True,
     size=(8.0, 8.0),
@@ -82,6 +96,41 @@ MILD_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             downsampled_scale=0.30,
             border_width=1.5,
             flat_patch_sampling=ROUGH_INIT_POS_FLAT_PATCH_CFG,
+        ),
+    },
+)
+
+
+MAST_ADAPTIVE_TERRAINS_CFG = TerrainGeneratorCfg(
+    curriculum=True,
+    size=(8.0, 8.0),
+    border_width=0.25,
+    num_rows=3,
+    num_cols=4,
+    horizontal_scale=0.05,
+    vertical_scale=0.001,
+    slope_threshold=0.6,
+    use_cache=False,
+    sub_terrains={
+        "plane": terrain_gen.MeshPlaneTerrainCfg(
+            proportion=0.70,
+            flat_patch_sampling=PLANE_INIT_POS_FLAT_PATCH_CFG,
+        ),
+        "rough_low": terrain_gen.HfRandomUniformTerrainCfg(
+            proportion=0.20,
+            noise_range=(0.0015, 0.004),
+            noise_step=0.001,
+            downsampled_scale=0.30,
+            border_width=1.5,
+            flat_patch_sampling=MAST_ROUGH_INIT_POS_FLAT_PATCH_CFG,
+        ),
+        "rough_mid": terrain_gen.HfRandomUniformTerrainCfg(
+            proportion=0.10,
+            noise_range=(0.004, 0.008),
+            noise_step=0.001,
+            downsampled_scale=0.30,
+            border_width=1.5,
+            flat_patch_sampling=MAST_ROUGH_INIT_POS_FLAT_PATCH_CFG,
         ),
     },
 )
@@ -149,6 +198,37 @@ class StableAdaptiveSceneCfg(InteractiveSceneCfg):
 
 
 @configclass
+class MastAdaptiveSceneCfg(InteractiveSceneCfg):
+    terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
+        terrain_type="generator",
+        terrain_generator=MAST_ADAPTIVE_TERRAINS_CFG,
+        max_init_terrain_level=0,
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            static_friction=1.1,
+            dynamic_friction=1.0,
+            restitution=0.0,
+        ),
+        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.36, 0.34, 0.31)),
+        debug_vis=False,
+    )
+    robot: ArticulationCfg = FRBOT_LIFT_STABLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    height_scanner = RayCasterCfg(
+        prim_path=f"{{ENV_REGEX_NS}}/Robot{BASE_ATTACH_PRIM_PATH}",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 1.0, 0.0)),
+        ray_alignment="world",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.15, size=(2.0, 1.4)),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
+    dome_light = AssetBaseCfg(
+        prim_path="/World/DomeLight",
+        spawn=sim_utils.DomeLightCfg(color=(0.95, 0.95, 0.95), intensity=1500.0),
+    )
+
+
+@configclass
 class StableWheelOnlySceneCfg(StableAdaptiveSceneCfg):
     robot: ArticulationCfg = FRBOT_LIFT_WHEEL_ONLY_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
@@ -187,6 +267,43 @@ class StableAdaptiveActionsCfg(StableFlatActionsCfg):
         alpha=0.08,
         midpoint=SUSPENSION_MIDPOINT_RAD,
         action_window=math.radians(0.6),
+    )
+
+
+@configclass
+class MastFlatActionsCfg(StableFlatActionsCfg):
+    suspension = mdp.BootstrapWindowedSuspensionActionCfg(
+        asset_name="robot",
+        joint_names=SUSPENSION_JOINTS,
+        preserve_order=True,
+        scale=1.0,
+        rescale_to_limits=False,
+        alpha=0.15,
+        midpoint=SUSPENSION_MIDPOINT_RAD,
+        action_window=math.radians(1.0),
+    )
+    drivetrain = mdp.BootstrapDrivetrainActionCfg(
+        asset_name="robot",
+        steer_position_targets=None,
+        lift_start_targets=None,
+        lift_max_targets=None,
+        wheel_velocity_targets=MAST_WHEEL_VELOCITY_TARGETS_RAD_S,
+        target_velocity_robot=(MAST_FORWARD_VELOCITY_TARGET_MPS, 0.0, 0.0),
+        debug_vis=False,
+    )
+
+
+@configclass
+class MastAdaptiveActionsCfg(MastFlatActionsCfg):
+    suspension = mdp.BootstrapWindowedSuspensionActionCfg(
+        asset_name="robot",
+        joint_names=SUSPENSION_JOINTS,
+        preserve_order=True,
+        scale=1.0,
+        rescale_to_limits=False,
+        alpha=0.20,
+        midpoint=SUSPENSION_MIDPOINT_RAD,
+        action_window=math.radians(1.5),
     )
 
 
@@ -283,6 +400,49 @@ class WheelOnlyObservationsCfg:
 
 
 @configclass
+class MastObservationsCfg:
+    @configclass
+    class PolicyCfg(ObsGroup):
+        base_lin_vel = ObsTerm(
+            func=mdp.reference_body_lin_vel_robot,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+        )
+        base_ang_vel = ObsTerm(
+            func=mdp.reference_body_ang_vel_robot,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+        )
+        projected_gravity = ObsTerm(
+            func=mdp.reference_body_projected_gravity_robot,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+        )
+        suspension_pos = ObsTerm(
+            func=mdp.joint_pos_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
+        )
+        suspension_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
+        )
+        previous_actions = ObsTerm(func=mdp.last_action, params={"action_name": "suspension"})
+        forward_command = ObsTerm(func=mdp.constant_forward_command, params={"value": MAST_FORWARD_VELOCITY_TARGET_MPS})
+        phase = ObsTerm(func=mdp.phase_index_obs)
+        mast_top_rel_pos = ObsTerm(func=mdp.mast_top_relative_pos_robot)
+        mast_top_rel_vel = ObsTerm(func=mdp.mast_top_relative_lin_vel_robot)
+        mast_top_vertical_vel = ObsTerm(func=mdp.mast_top_vertical_velocity_robot)
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.0},
+            clip=(-2.0, 2.0),
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
 class StableFlatEventCfg:
     reset_root = EventTerm(
         func=mdp.reset_root_state_uniform_robot_frame_height,
@@ -325,6 +485,36 @@ class StableAdaptiveEventCfg(StableFlatEventCfg):
         func=mdp.assign_terrain_types,
         mode="startup",
         params={"terrain_types": (0, 1)},
+    )
+    reset_root = EventTerm(
+        func=mdp.reset_root_state_from_terrain_robot_frame,
+        mode="reset",
+        params={
+            "pose_range": {
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
+            },
+            "velocity_range": {
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
+            },
+            "root_height": STABLE_BASE_INIT_HEIGHT_M,
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
+
+
+@configclass
+class MastAdaptiveEventCfg(StableFlatEventCfg):
+    startup_plane_terrain_types = EventTerm(
+        func=mdp.assign_terrain_types,
+        mode="startup",
+        params={"terrain_types": (0,)},
     )
     reset_root = EventTerm(
         func=mdp.reset_root_state_from_terrain_robot_frame,
@@ -430,6 +620,90 @@ class StableRewardsCfg:
 
 
 @configclass
+class MastRewardsCfg:
+    alive = RewTerm(func=mdp.task_phase_alive, weight=0.2)
+    terminating = RewTerm(
+        func=mdp.task_phase_terminated_term,
+        weight=-4.0,
+        params={
+            "term_keys": [
+                "catastrophic_bad_orientation",
+                "catastrophic_root_height",
+                "task_bad_orientation",
+                "task_excessive_motion",
+                "terrain_out_of_bounds",
+                "stalled_progress",
+            ]
+        },
+    )
+    mast_top_xy_displacement = RewTerm(func=mdp.task_phase_mast_top_xy_displacement_l2, weight=-60.0)
+    mast_top_xy_velocity = RewTerm(func=mdp.task_phase_mast_top_xy_velocity_l2, weight=-10.0)
+    mast_top_vertical_velocity = RewTerm(func=mdp.task_phase_mast_top_vertical_velocity_l2, weight=-4.0)
+    mast_top_angular_velocity = RewTerm(func=mdp.task_phase_mast_top_angular_velocity_l2, weight=-2.0)
+    flat_orientation = RewTerm(
+        func=mdp.task_phase_flat_orientation_l2,
+        weight=-8.0,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+    )
+    tilt_margin = RewTerm(
+        func=mdp.task_phase_tilt_margin_l2,
+        weight=-16.0,
+        params={
+            "threshold": math.radians(6.0),
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
+    )
+    angular_velocity = RewTerm(
+        func=mdp.task_phase_ang_vel_xy_l2,
+        weight=-0.8,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+    )
+    vertical_velocity = RewTerm(
+        func=mdp.task_phase_lin_vel_z_l2,
+        weight=-0.3,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+    )
+    lateral_velocity = RewTerm(
+        func=mdp.task_phase_lateral_velocity_l2,
+        weight=-0.2,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+    )
+    forward_velocity = RewTerm(
+        func=mdp.task_phase_forward_speed_abs_exp,
+        weight=12.0,
+        params={
+            "target": MAST_FORWARD_VELOCITY_TARGET_MPS,
+            "std": 0.08,
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
+    )
+    forward_speed_deficit = RewTerm(
+        func=mdp.task_phase_forward_speed_deficit_signed_l1,
+        weight=-2.0,
+        params={
+            "target": MAST_FORWARD_VELOCITY_TARGET_MPS,
+            "asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR),
+        },
+    )
+    backward_speed = RewTerm(
+        func=mdp.task_phase_backward_speed_l1,
+        weight=-6.0,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=REFERENCE_BODY_NAME_EXPR)},
+    )
+    suspension_centering = RewTerm(
+        func=mdp.task_phase_joint_deviation_l1,
+        weight=-0.03,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
+    )
+    suspension_limits = RewTerm(
+        func=mdp.task_phase_joint_pos_limits,
+        weight=-1.2,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=SUSPENSION_JOINTS, preserve_order=True)},
+    )
+    action_rate = RewTerm(func=mdp.task_phase_action_rate_l2, weight=-0.01)
+
+
+@configclass
 class StableTerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     catastrophic_bad_orientation = DoneTerm(
@@ -493,6 +767,19 @@ class StableAdaptiveCurriculumCfg:
 
 
 @configclass
+class MastAdaptiveCurriculumCfg:
+    terrain_levels = CurrTerm(
+        func=mdp.phase_aware_terrain_levels_progress,
+        params={
+            "progress_threshold": 0.08,
+            "regression_threshold": 0.02,
+            "plane_terrain_types": (0,),
+            "rough_terrain_types": (1, 2),
+        },
+    )
+
+
+@configclass
 class FrbotLiftStableFlatEnvCfg(ManagerBasedRLEnvCfg):
     scene: StableFlatSceneCfg = StableFlatSceneCfg(num_envs=1024, env_spacing=8.0, replicate_physics=True)
     observations: StableObservationsCfg = StableObservationsCfg()
@@ -541,6 +828,54 @@ class FrbotLiftStableAdaptiveEnvCfg(ManagerBasedRLEnvCfg):
 
 
 @configclass
+class FrbotLiftMastFlatEnvCfg(ManagerBasedRLEnvCfg):
+    scene: StableFlatSceneCfg = StableFlatSceneCfg(num_envs=1024, env_spacing=8.0, replicate_physics=True)
+    observations: MastObservationsCfg = MastObservationsCfg()
+    actions: MastFlatActionsCfg = MastFlatActionsCfg()
+    events: StableFlatEventCfg = StableFlatEventCfg()
+    rewards: MastRewardsCfg = MastRewardsCfg()
+    terminations: StableTerminationsCfg = StableTerminationsCfg()
+    curriculum = None
+
+    def __post_init__(self) -> None:
+        self.decimation = 4
+        self.episode_length_s = 14.0
+        self.viewer.eye = (5.5, 0.0, 3.0)
+        self.viewer.lookat = (0.0, 0.0, 0.6)
+        self.sim.dt = 0.005
+        self.sim.render_interval = self.decimation
+        self.sim.physx.gpu_collision_stack_size = 2**28
+        self.sim.physx.enable_external_forces_every_iteration = True
+        self.sim.physx.solve_articulation_contact_last = True
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+
+
+@configclass
+class FrbotLiftMastAdaptiveEnvCfg(ManagerBasedRLEnvCfg):
+    scene: MastAdaptiveSceneCfg = MastAdaptiveSceneCfg(num_envs=1024, env_spacing=8.0, replicate_physics=True)
+    observations: MastObservationsCfg = MastObservationsCfg()
+    actions: MastAdaptiveActionsCfg = MastAdaptiveActionsCfg()
+    events: MastAdaptiveEventCfg = MastAdaptiveEventCfg()
+    rewards: MastRewardsCfg = MastRewardsCfg()
+    terminations: StableTerminationsCfg = StableTerminationsCfg()
+    curriculum: MastAdaptiveCurriculumCfg = MastAdaptiveCurriculumCfg()
+
+    def __post_init__(self) -> None:
+        self.decimation = 4
+        self.episode_length_s = 14.0
+        self.viewer.eye = (5.5, 0.0, 3.0)
+        self.viewer.lookat = (0.0, 0.0, 0.6)
+        self.sim.dt = 0.005
+        self.sim.render_interval = self.decimation
+        self.sim.physx.gpu_collision_stack_size = 2**28
+        self.sim.physx.enable_external_forces_every_iteration = True
+        self.sim.physx.solve_articulation_contact_last = True
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+
+
+@configclass
 class FrbotLiftStablePlayEnvCfg(FrbotLiftStableAdaptiveEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -557,6 +892,25 @@ class FrbotLiftStablePlayEnvCfg(FrbotLiftStableAdaptiveEnvCfg):
                 sub_terrain.flat_patch_sampling = None
         # Play mode does not need terrain flat-patch spawn sampling. Use the safe
         # uniform reset so GUI playback reliably launches even when rough tiles are present.
+        self.events = StableFlatEventCfg()
+        self.curriculum = None
+
+
+@configclass
+class FrbotLiftMastPlayEnvCfg(FrbotLiftMastAdaptiveEnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 8
+        self.scene.env_spacing = 8.0
+        self.actions.drivetrain.debug_vis = True
+        self.observations.policy.enable_corruption = False
+        self.scene.terrain.max_init_terrain_level = None
+        if self.scene.terrain.terrain_generator is not None:
+            self.scene.terrain.terrain_generator.curriculum = False
+            self.scene.terrain.terrain_generator.num_rows = 3
+            self.scene.terrain.terrain_generator.num_cols = 4
+            for sub_terrain in self.scene.terrain.terrain_generator.sub_terrains.values():
+                sub_terrain.flat_patch_sampling = None
         self.events = StableFlatEventCfg()
         self.curriculum = None
 

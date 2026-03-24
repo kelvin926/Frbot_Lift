@@ -40,6 +40,10 @@ from rsl_rl.runners import OnPolicyRunner
 from Frbot_Lift.assets.frbot_lift_asset import LIFT_JOINTS
 from Frbot_Lift.tasks.manager_based.frbot_lift.mdp.robot_frame import body_to_robot_frame, robot_roll_pitch_from_gravity
 from Frbot_Lift.tasks.manager_based.frbot_lift_stable.mdp.bootstrap import phase_index, phase_name_from_index
+from Frbot_Lift.tasks.manager_based.frbot_lift_stable.mdp.mast_top import (
+    mast_top_relative_lin_vel_robot,
+    mast_top_relative_pos_robot_deviation,
+)
 
 
 def resolve_project_root() -> Path:
@@ -55,6 +59,7 @@ def resolve_project_root() -> Path:
 TRAIN_TASK_OVERRIDES = {
     "Inventory-Leveling-Play-v0": "Inventory-Leveling-v0",
     "Inventory-Leveling-StablePlay-v0": "Inventory-Leveling-StableAdaptive-v0",
+    "Inventory-Leveling-MastPlay-v0": "Inventory-Leveling-MastAdaptive-v0",
 }
 
 
@@ -91,6 +96,15 @@ def extract_metrics(base_env, env_idx: int = 0) -> tuple[float, float, float]:
     return roll_deg, pitch_deg, peak_tilt_deg
 
 
+def extract_mast_metrics(base_env, env_idx: int = 0) -> tuple[float, float, float]:
+    mast_top_rel_pos = mast_top_relative_pos_robot_deviation(base_env)[env_idx]
+    mast_top_rel_vel = mast_top_relative_lin_vel_robot(base_env)[env_idx]
+    mast_top_xy_disp = torch.linalg.norm(mast_top_rel_pos[:2]).item()
+    mast_top_xy_vel = torch.linalg.norm(mast_top_rel_vel[:2]).item()
+    mast_top_peak_xy_disp = torch.max(torch.abs(mast_top_rel_pos[:2])).item()
+    return mast_top_xy_disp, mast_top_xy_vel, mast_top_peak_xy_disp
+
+
 def finalize_video(video_dir: Path, target_path: Path):
     mp4_files = sorted(video_dir.glob("*.mp4"))
     if not mp4_files:
@@ -107,6 +121,9 @@ def upsert_metrics(
     peak_values: list[float],
     forward_velocity_values: list[float],
     abs_forward_velocity_values: list[float],
+    mast_top_xy_disp_values: list[float],
+    mast_top_xy_vel_values: list[float],
+    mast_top_peak_xy_disp_values: list[float],
 ):
     rows = []
     if csv_path.exists():
@@ -119,14 +136,20 @@ def upsert_metrics(
     peak_tensor = torch.tensor(peak_values)
     forward_tensor = torch.tensor(forward_velocity_values)
     abs_forward_tensor = torch.tensor(abs_forward_velocity_values)
+    mast_top_xy_disp_tensor = torch.tensor(mast_top_xy_disp_values)
+    mast_top_xy_vel_tensor = torch.tensor(mast_top_xy_vel_values)
+    mast_top_peak_xy_disp_tensor = torch.tensor(mast_top_peak_xy_disp_values)
 
     rows.append(
         {
             "mode": mode,
             "steps": str(len(roll_values)),
-            "roll_rms_deg": f"{torch.sqrt(torch.mean(torch.square(roll_tensor))).item():.6f}",
-            "pitch_rms_deg": f"{torch.sqrt(torch.mean(torch.square(pitch_tensor))).item():.6f}",
+            "base_roll_rms_deg": f"{torch.sqrt(torch.mean(torch.square(roll_tensor))).item():.6f}",
+            "base_pitch_rms_deg": f"{torch.sqrt(torch.mean(torch.square(pitch_tensor))).item():.6f}",
             "peak_tilt_deg": f"{torch.max(peak_tensor).item():.6f}",
+            "mast_top_xy_rms_m": f"{torch.sqrt(torch.mean(torch.square(mast_top_xy_disp_tensor))).item():.6f}",
+            "mast_top_xy_vel_rms_mps": f"{torch.sqrt(torch.mean(torch.square(mast_top_xy_vel_tensor))).item():.6f}",
+            "mast_top_peak_xy_disp_m": f"{torch.max(mast_top_peak_xy_disp_tensor).item():.6f}",
             "mean_forward_velocity_mps": f"{torch.mean(forward_tensor).item():.6f}",
             "mean_abs_forward_velocity_mps": f"{torch.mean(abs_forward_tensor).item():.6f}",
         }
@@ -138,9 +161,12 @@ def upsert_metrics(
             fieldnames=[
                 "mode",
                 "steps",
-                "roll_rms_deg",
-                "pitch_rms_deg",
+                "base_roll_rms_deg",
+                "base_pitch_rms_deg",
                 "peak_tilt_deg",
+                "mast_top_xy_rms_m",
+                "mast_top_xy_vel_rms_mps",
+                "mast_top_peak_xy_disp_m",
                 "mean_forward_velocity_mps",
                 "mean_abs_forward_velocity_mps",
             ],
@@ -159,6 +185,9 @@ def write_per_env_metrics(csv_path: Path, rows: list[dict[str, str | int | float
         "roll_deg",
         "pitch_deg",
         "peak_tilt_deg",
+        "mast_top_xy_disp_m",
+        "mast_top_xy_vel_mps",
+        "mast_top_peak_xy_disp_m",
         "forward_velocity_mps",
         "termination_terms",
         *[f"{joint_name}_pos" for joint_name in LIFT_JOINTS],
@@ -176,6 +205,11 @@ def collect_per_env_rows(base_env, mode: str, step_idx: int, lift_joint_ids: lis
     roll_deg = torch.rad2deg(roll)
     pitch_deg = torch.rad2deg(pitch)
     peak_tilt_deg = torch.maximum(torch.abs(roll_deg), torch.abs(pitch_deg))
+    mast_top_rel_pos = mast_top_relative_pos_robot_deviation(base_env)
+    mast_top_rel_vel = mast_top_relative_lin_vel_robot(base_env)
+    mast_top_xy_disp = torch.linalg.norm(mast_top_rel_pos[:, :2], dim=1)
+    mast_top_xy_vel = torch.linalg.norm(mast_top_rel_vel[:, :2], dim=1)
+    mast_top_peak_xy_disp = torch.max(torch.abs(mast_top_rel_pos[:, :2]), dim=1).values
     root_height = robot.data.root_pos_w[:, 2] - base_env.scene.env_origins[:, 2]
     forward_velocity = body_to_robot_frame(robot.data.root_lin_vel_b)[:, 0]
     lift_positions = robot.data.joint_pos[:, lift_joint_ids]
@@ -199,6 +233,9 @@ def collect_per_env_rows(base_env, mode: str, step_idx: int, lift_joint_ids: lis
             "roll_deg": f"{roll_deg[env_idx].item():.6f}",
             "pitch_deg": f"{pitch_deg[env_idx].item():.6f}",
             "peak_tilt_deg": f"{peak_tilt_deg[env_idx].item():.6f}",
+            "mast_top_xy_disp_m": f"{mast_top_xy_disp[env_idx].item():.6f}",
+            "mast_top_xy_vel_mps": f"{mast_top_xy_vel[env_idx].item():.6f}",
+            "mast_top_peak_xy_disp_m": f"{mast_top_peak_xy_disp[env_idx].item():.6f}",
             "forward_velocity_mps": f"{forward_velocity[env_idx].item():.6f}",
             "termination_terms": "|".join(termination_terms),
         }
@@ -213,7 +250,7 @@ def main():
     target_video_path, metrics_csv_path, per_env_csv_path = resolve_output_paths(project_root, args_cli.mode)
     temp_video_dir = target_video_path.parent / f"_{args_cli.mode}_tmp"
     shutil.rmtree(temp_video_dir, ignore_errors=True)
-    stable_task = "Inventory-Leveling-Stable" in args_cli.task
+    stable_task = ("Inventory-Leveling-Stable" in args_cli.task) or ("Inventory-Leveling-Mast" in args_cli.task)
 
     env_cfg = parse_env_cfg(
         args_cli.task,
@@ -241,6 +278,9 @@ def main():
     peak_values = []
     forward_velocity_values = []
     abs_forward_velocity_values = []
+    mast_top_xy_disp_values = []
+    mast_top_xy_vel_values = []
+    mast_top_peak_xy_disp_values = []
     per_env_rows = []
 
     if args_cli.mode == "baseline":
@@ -255,6 +295,10 @@ def main():
             roll_values.append(roll_deg)
             pitch_values.append(pitch_deg)
             peak_values.append(peak_tilt_deg)
+            mast_top_xy_disp, mast_top_xy_vel, mast_top_peak_xy_disp = extract_mast_metrics(base_env)
+            mast_top_xy_disp_values.append(mast_top_xy_disp)
+            mast_top_xy_vel_values.append(mast_top_xy_vel)
+            mast_top_peak_xy_disp_values.append(mast_top_peak_xy_disp)
             forward_velocity = body_to_robot_frame(base_env.scene["robot"].data.root_lin_vel_b[0:1])[0, 0].item()
             forward_velocity_values.append(forward_velocity)
             abs_forward_velocity_values.append(abs(forward_velocity))
@@ -286,6 +330,10 @@ def main():
             roll_values.append(roll_deg)
             pitch_values.append(pitch_deg)
             peak_values.append(peak_tilt_deg)
+            mast_top_xy_disp, mast_top_xy_vel, mast_top_peak_xy_disp = extract_mast_metrics(base_env)
+            mast_top_xy_disp_values.append(mast_top_xy_disp)
+            mast_top_xy_vel_values.append(mast_top_xy_vel)
+            mast_top_peak_xy_disp_values.append(mast_top_peak_xy_disp)
             forward_velocity = body_to_robot_frame(base_env.scene["robot"].data.root_lin_vel_b[0:1])[0, 0].item()
             forward_velocity_values.append(forward_velocity)
             abs_forward_velocity_values.append(abs(forward_velocity))
@@ -303,6 +351,9 @@ def main():
         peak_values,
         forward_velocity_values,
         abs_forward_velocity_values,
+        mast_top_xy_disp_values,
+        mast_top_xy_vel_values,
+        mast_top_peak_xy_disp_values,
     )
     write_per_env_metrics(per_env_csv_path, per_env_rows)
 

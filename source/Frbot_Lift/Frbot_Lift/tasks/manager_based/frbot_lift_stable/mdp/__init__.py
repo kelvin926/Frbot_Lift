@@ -15,6 +15,7 @@ from .actions import *  # noqa: F401, F403
 from .bootstrap import *  # noqa: F401, F403
 from .curriculums import *  # noqa: F401, F403
 from .events import *  # noqa: F401, F403
+from .mast_top import *  # noqa: F401, F403
 from .reference_body import *  # noqa: F401, F403
 from .rewards import *  # noqa: F401, F403
 from .terminations import *  # noqa: F401, F403

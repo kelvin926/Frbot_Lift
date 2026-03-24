@@ -39,6 +39,36 @@ gym.register(
 )
 
 gym.register(
+    id="Inventory-Leveling-MastFlat-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.frbot_lift_stable_env_cfg:FrbotLiftMastFlatEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_mast_flat_ppo_cfg:MastFlatPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Inventory-Leveling-MastAdaptive-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.frbot_lift_stable_env_cfg:FrbotLiftMastAdaptiveEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_mast_adaptive_ppo_cfg:MastAdaptivePPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Inventory-Leveling-MastPlay-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.frbot_lift_stable_env_cfg:FrbotLiftMastPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_mast_adaptive_ppo_cfg:MastAdaptivePPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Inventory-Leveling-WheelOnlyPlay-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
