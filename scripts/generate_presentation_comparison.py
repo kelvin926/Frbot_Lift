@@ -28,6 +28,9 @@ parser.add_argument("--num_envs", type=int, default=64, help="Number of robots t
 parser.add_argument("--video_length", type=int, default=500, help="Number of environment steps to record.")
 parser.add_argument("--speed_scale", type=float, default=10.0, help="Presentation speed multiplier.")
 parser.add_argument("--fps", type=int, default=50, help="Video frames per second.")
+parser.add_argument("--width", type=int, default=1280, help="Render width passed to Isaac Sim.")
+parser.add_argument("--height", type=int, default=720, help="Render height passed to Isaac Sim.")
+parser.add_argument("--hide_label", action="store_true", default=False, help="Render without the corner label.")
 parser.add_argument(
     "--output_dir",
     type=str,
@@ -49,6 +52,10 @@ import isaaclab.sim as sim_utils
 import isaaclab.sim.utils.prims as prim_utils
 import numpy as np
 import torch
+import carb
+import omni.kit.app
+import omni.kit.commands
+import omni.usd
 from PIL import Image, ImageDraw, ImageFont
 from pxr import UsdGeom
 
@@ -166,6 +173,16 @@ def add_label(frame: np.ndarray, label: str) -> np.ndarray:
     draw.rounded_rectangle(box, radius=18, fill=(10, 10, 10, 170))
     draw.text((52, 39), label, font=font, fill=(255, 255, 255, 255))
     return np.asarray(image.convert("RGB"))
+
+
+def resize_frame(frame: np.ndarray) -> np.ndarray:
+    target_size = (args_cli.width, args_cli.height)
+    source_size = (frame.shape[1], frame.shape[0])
+    if source_size == target_size:
+        return frame
+    image = Image.fromarray(frame.astype(np.uint8)).convert("RGB")
+    image = image.resize(target_size, Image.Resampling.LANCZOS)
+    return np.asarray(image)
 
 
 def restyle_floor(frame: np.ndarray) -> np.ndarray:
@@ -286,6 +303,34 @@ def spawn_presentation_floor(base_env):
         floor_cfg,
         translation=(center[0].item(), center[1].item(), -0.02),
     )
+
+
+def configure_default_light_rig():
+    """Force the viewport lighting mode to Camera Rigs > Default."""
+
+    settings = carb.settings.get_settings()
+    settings.set("/exts/omni.kit.viewport.menubar.lighting/defaultRig", "Default")
+    settings.set("/persistent/exts/omni.kit.viewport.menubar.lighting/autoLightRig/enabled", True)
+    settings.set("/exts/omni.kit.viewport.menubar.lighting/autoLightRig/enableWithoutMenu", True)
+    settings.set("/rtx/useViewLightingMode", False)
+    try:
+        ext_manager = omni.kit.app.get_app().get_extension_manager()
+        ext_manager.set_extension_enabled_immediate("omni.kit.viewport.menubar.lighting", True)
+        result = omni.kit.commands.execute(
+            "SetLightingMenuModeCommand",
+            lighting_mode="Default",
+            usd_context_name="",
+        )
+        trace(f"[proposal] forced lighting rig: {result}")
+    except Exception as exc:
+        trace(f"[proposal] command path failed, trying direct module fallback: {exc}")
+        try:
+            from omni.kit.viewport.menubar.lighting.actions import _set_lighting_mode
+
+            result = _set_lighting_mode("Default", usd_context=omni.usd.get_context(""))
+            trace(f"[proposal] forced lighting rig via fallback: {result}")
+        except Exception as fallback_exc:
+            trace(f"[proposal] failed to force lighting rig: {fallback_exc}")
 
 
 def make_zero_actions(env, device: torch.device) -> torch.Tensor:
@@ -512,6 +557,7 @@ def render_mode(output_dir: Path):
             env.step(zero_actions)
     trace("[proposal] env warmup complete")
     spawn_presentation_floor(base_env)
+    configure_default_light_rig()
 
     base_root_pose = robot.data.root_link_pose_w.clone()
     base_joint_pos = robot.data.joint_pos.clone()
@@ -617,7 +663,11 @@ def render_mode(output_dir: Path):
                 frame = env.render()
                 if frame is None:
                     continue
-                writer.append_data(add_label(restyle_floor(np.asarray(frame)), MODE_METADATA[args_cli.mode]["label"]))
+                processed_frame = restyle_floor(np.asarray(frame))
+                if not args_cli.hide_label:
+                    processed_frame = add_label(processed_frame, MODE_METADATA[args_cli.mode]["label"])
+                processed_frame = resize_frame(processed_frame)
+                writer.append_data(processed_frame)
     finally:
         trace("[proposal] closing writer and env")
         writer.close()
