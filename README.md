@@ -165,6 +165,40 @@ Wheel-only play on the current training floor:
 .\scripts\tools\run_python_visible.cmd scripts\zero_agent.py --task Inventory-Leveling-WheelOnlyPlay-v0 --num_envs 8
 ```
 
+Presentation baseline GUI:
+
+```powershell
+cd R:\Frbot_Lift
+.\scripts\tools\run_python_visible.cmd scripts\generate_presentation_comparison.py --mode baseline_uncorrected --task Inventory-Leveling-StableFlat-v0 --num_envs 64 --video_length 5000 --speed_scale 10.0
+```
+
+Presentation stabilized GUI:
+
+```powershell
+cd R:\Frbot_Lift
+.\scripts\tools\run_python_visible.cmd scripts\generate_presentation_comparison.py --mode scripted_stabilized --task Inventory-Leveling-StableFlat-v0 --num_envs 64 --video_length 5000 --speed_scale 10.0
+```
+
+Presentation baseline render:
+
+```powershell
+cd R:\Frbot_Lift
+.\scripts\tools\run_python.ps1 scripts\generate_presentation_comparison.py --mode baseline_uncorrected --task Inventory-Leveling-StableFlat-v0 --num_envs 64 --video_length 500 --speed_scale 10.0 --headless
+```
+
+Presentation stabilized render:
+
+```powershell
+cd R:\Frbot_Lift
+.\scripts\tools\run_python.ps1 scripts\generate_presentation_comparison.py --mode scripted_stabilized --task Inventory-Leveling-StableFlat-v0 --num_envs 64 --video_length 500 --speed_scale 10.0 --headless
+```
+
+Presentation demo camera:
+
+- fixed camera eye: `(52, -33, 10)`
+- target is still computed from the center of the demo cluster
+- both baseline and stabilized use the same camera setup
+
 Generate learned comparison artifacts:
 
 ```powershell

@@ -109,6 +109,7 @@ WHEEL_SPIN_RAD_S_AT_10X = 18.0
 FORWARD_LOCAL_AXIS = (0.0, 0.0, -1.0)
 ARROW_SCALE = (1.0, 1.0, 1.0)
 CAMERA_TARGET_HEIGHT_M = 5.6
+PRESENTATION_CAMERA_EYE = (52.0, -33.0, 10.0)
 CAMERA_BACKOFF_FACTOR = 0.46
 CAMERA_SIDE_FACTOR = 0.0
 CAMERA_HEIGHT_FACTOR = 0.24
@@ -232,10 +233,7 @@ def compute_focus_origins(env_origins: torch.Tensor) -> tuple[torch.Tensor, torc
 
 def configure_camera(base_env, translation_distance_m: float):
     env_origins = base_env.scene.env_origins.detach().clone()
-    center, span = compute_focus_origins(env_origins)
-    cluster_extent = float(max(span[0].item(), span[1].item()))
-    backoff = max(CAMERA_MIN_BACKOFF_M, cluster_extent * CAMERA_BACKOFF_FACTOR)
-    height = max(CAMERA_MIN_HEIGHT_M, cluster_extent * CAMERA_HEIGHT_FACTOR)
+    center, _ = compute_focus_origins(env_origins)
     robot = base_env.scene["robot"]
     base_quat = robot.data.root_link_pose_w[:, 3:7].clone()
     forward_axis = torch.tensor(FORWARD_LOCAL_AXIS, device=base_env.device, dtype=torch.float32).repeat(
@@ -245,14 +243,8 @@ def configure_camera(base_env, translation_distance_m: float):
     forward_mean = forward_world.mean(dim=0)
     forward_xy = torch.tensor([forward_mean[0], forward_mean[1], 0.0], device=base_env.device)
     forward_xy = forward_xy / torch.linalg.vector_norm(forward_xy).clip(min=1.0e-6)
-    right_xy = torch.tensor([-forward_xy[1], forward_xy[0], 0.0], device=base_env.device)
-    eye_vec = -forward_xy * backoff
     target_vec = forward_xy * (translation_distance_m * 0.55)
-    eye = (
-        center[0].item() + eye_vec[0].item(),
-        center[1].item() + eye_vec[1].item(),
-        height,
-    )
+    eye = PRESENTATION_CAMERA_EYE
     target = (
         center[0].item() + target_vec[0].item(),
         center[1].item() + target_vec[1].item(),
